@@ -25,7 +25,7 @@ BGP_PEER_IF1="azure-bgp-peer-if1"
 PRIORITY=100
 
 ### From Azure -
-NEW_KEY='Q()dPJmvMHxca0(!n$Gc'
+SHARED_KEY='Q()dPJmvMHxca0(!n$Gc'
 AZURE_PUBIP0="20.121.130.26"
 AZURE_PUBIP1="172.172.233.46"
 AZURE_APIPA_BGP_A="169.254.21.2"  # Azure's BGP IP
@@ -64,7 +64,7 @@ function build() {
         --peer-external-gateway-interface=0 \
         --region="$GCP_REGION" \
         --ike-version=2 \
-        --shared-secret="$NEW_KEY" \
+        --shared-secret="$SHARED_KEY" \
         --router="$ROUTER_NAME" \
         --vpn-gateway="$HA_VPN_GW_NAME" \
         --interface=0
@@ -75,7 +75,7 @@ function build() {
         --peer-external-gateway-interface=1 \
         --region="$GCP_REGION" \
         --ike-version=2 \
-        --shared-secret="$NEW_KEY" \
+        --shared-secret="$SHARED_KEY" \
         --router="$ROUTER_NAME" \
         --vpn-gateway="$HA_VPN_GW_NAME" \
         --interface=1
