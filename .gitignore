@@ -4,41 +4,40 @@
 
 # exclude the ignore file
 #.gitignore
-
-# Crash log files
-crash.log
-crash.*.log
-
-
-###========================== Default entries
-HISTORY.txt
-README.txt
-
-# Ignore "Private" files directories
-/Private/
-
-# Ignore temporary or scratch files
-**/foo*
-**/*.log
-[Tt]emp/
-*.log
-*.bak
-*.[Tt]emp
-*.tmp
-*[Ss]cratch*
-
+# =======================
 # OS artifacts
+# =======================
 .DS_Store
 Thumbs.db
 
-# Ignore possibly very large files
+# =======================
+# Logs and temp files
+# =======================
+*.log
+*.tmp
+*.bak
+*.bkp
+*.swp
+*~
+[Tt]emp/
+*[Ss]cratch*
+
+# =======================
+# Private/proprietary
+# =======================
+/Private/
+
+# =======================
+# Terraform state / build dirs
+# =======================
+*.tfstate
+*.tfstate.backup
+.terraform/
+
+# =======================
+# Large files
+# =======================
 *.iso
 *.vhdx
 *.vhd
 *.zip
-
-# Exclude vim swap files and backups
-*.swap
-*.sw
-*~
- 
