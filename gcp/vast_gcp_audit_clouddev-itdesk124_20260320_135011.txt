@@ -1,0 +1,259 @@
+
+========================================================================
+ VAST on Cloud Requirements Validator Using Project: clouddev-itdesk124
+ VPC: karlv-corevpc | Subnet: ALL
+ Rule: FULL VPC SCAN
+ MODE: Verbose (Listing all permissions)
+========================================================================
+
+[*] Checking enabled Google Cloud APIs...
+------------------------------------------------------------
+  [PASS] servicenetworking.googleapis.com is enabled.
+  [PASS] cloudfunctions.googleapis.com is enabled.
+  [PASS] artifactregistry.googleapis.com is enabled.
+  [PASS] cloudbuild.googleapis.com is enabled.
+  [PASS] compute.googleapis.com is enabled.
+  [PASS] networkmanagement.googleapis.com is enabled.
+  [PASS] networksecurity.googleapis.com is enabled.
+  [PASS] monitoring.googleapis.com is enabled.
+  [PASS] logging.googleapis.com is enabled.
+  [PASS] secretmanager.googleapis.com is enabled.
+
+
+[*] Validating Infrastructure...
+------------------------------------------------------------
+  [INFO] No subnet provided. Auditing all subnets in 'karlv-corevpc'...
+  [PASS] Subnet: subnet-hub-us-central1 (us-central1) -> PGA: ENABLED
+  [PASS] Subnet: subnet-hub-us-central1-voc1 (us-central1) -> PGA: ENABLED
+  [PASS] Subnet: subnet-hub-us-central1-voc2 (us-central1) -> PGA: ENABLED
+  [PASS] Subnet: subnet-hub-europe-west1 (europe-west1) -> PGA: ENABLED
+  [PASS] Subnet: subnet-hub-us-west1-01 (us-west1) -> PGA: ENABLED
+  [PASS] Subnet: subnet-hub-us-west1-voc1 (us-west1) -> PGA: ENABLED
+  [PASS] Subnet: subnet-hub-us-west1-voc2 (us-west1) -> PGA: ENABLED
+  [PASS] Subnet: subnet-hub-us-west1-voc3 (us-west1) -> PGA: ENABLED
+  [PASS] Subnet: subnet-hub-us-west1-voc4 (us-west1) -> PGA: ENABLED
+  [PASS] Subnet: subnet-hub-us-east1 (us-east1) -> PGA: ENABLED
+  [PASS] Subnet: subnet-hub-us-east1-voc1 (us-east1) -> PGA: ENABLED
+  [PASS] Subnet: subnet-hub-us-east1-voc2 (us-east1) -> PGA: ENABLED
+  [PASS] Subnet: subnet-hub-us-east1-voc3 (us-east1) -> PGA: ENABLED
+  [PASS] Subnet: subnet-hub-us-east1-voc4 (us-east1) -> PGA: ENABLED
+  [PASS] Subnet: subnet-hub-asia-northeast1 (asia-northeast1) -> PGA: ENABLED
+  [PASS] Subnet: subnet-hub-asia-northeast1-tpu (asia-northeast1) -> PGA: ENABLED
+  [PASS] Subnet: subnet-hub-asia-northeast1-tpu2 (asia-northeast1) -> PGA: ENABLED
+  [PASS] Subnet: subnet-hub-asia-northeast1-tpu3 (asia-northeast1) -> PGA: ENABLED
+  [PASS] Subnet: subnet-hub-asia-northeast1-tpu4 (asia-northeast1) -> PGA: ENABLED
+  [PASS] Subnet: subnet-hub-asia-northeast1-voc1 (asia-northeast1) -> PGA: ENABLED
+  [PASS] Subnet: subnet-hub-us-east4 (us-east4) -> PGA: ENABLED
+  [PASS] Subnet: subnet-hub-europe-west2 (europe-west2) -> PGA: ENABLED
+  [PASS] Subnet: subnet-hub-europe-west2-ipv6 (europe-west2) -> PGA: ENABLED
+  [PASS] Subnet: subnet-hub-europe-west3 (europe-west3) -> PGA: ENABLED
+  [PASS] Subnet: subnet-hub-asia-south1 (asia-south1) -> PGA: ENABLED
+  [PASS] Subnet: subnet-hub-europe-west4 (europe-west4) -> PGA: ENABLED
+  [PASS] Subnet: subnet-hub-europe-west4-tpu (europe-west4) -> PGA: ENABLED
+  [PASS] Subnet: subnet-hub-europe-west4-voc1 (europe-west4) -> PGA: ENABLED
+  [PASS] Subnet: subnet-hub-europe-north1 (europe-north1) -> PGA: ENABLED
+  [PASS] Subnet: subnet-hub-us-west2 (us-west2) -> PGA: ENABLED
+  [PASS] Subnet: subnet-hub-us-west2-02 (us-west2) -> PGA: ENABLED
+  [PASS] Subnet: subnet-hub-us-west2-03 (us-west2) -> PGA: ENABLED
+  [PASS] Subnet: subnet-hub-us-west2-ipv6 (us-west2) -> PGA: ENABLED
+  [PASS] Subnet: subnet-hub-us-west2-voc1 (us-west2) -> PGA: ENABLED
+  [PASS] Subnet: subnet-hub-us-west2-voc2 (us-west2) -> PGA: ENABLED
+  [PASS] Subnet: subnet-hub-us-west2-voc3 (us-west2) -> PGA: ENABLED
+  [PASS] Subnet: subnet-hub-us-west2-voc4 (us-west2) -> PGA: ENABLED
+  [PASS] Subnet: subnet-hub-asia-east2 (asia-east2) -> PGA: ENABLED
+  [PASS] Subnet: subnet-hub-us-west3 (us-west3) -> PGA: ENABLED
+  [PASS] Subnet: subnet-hub-us-west4 (us-west4) -> PGA: ENABLED
+  [PASS] Subnet: subnet-hub-europe-central2 (europe-central2) -> PGA: ENABLED
+  [PASS] Subnet: subnet-hub-asia-south2 (asia-south2) -> PGA: ENABLED
+  [PASS] Subnet: subnet-hub-us-east5 (us-east5) -> PGA: ENABLED
+  [PASS] Subnet: subnet-hub-us-east5-tpu (us-east5) -> PGA: ENABLED
+  [PASS] Subnet: subnet-hub-us-east5-tpu2 (us-east5) -> PGA: ENABLED
+  [PASS] Subnet: subnet-hub-us-east5-voc1 (us-east5) -> PGA: ENABLED
+  [PASS] Subnet: subnet-hub-europe-southwest1 (europe-southwest1) -> PGA: ENABLED
+  [PASS] Subnet: subnet-hub-us-south1 (us-south1) -> PGA: ENABLED
+  [PASS] Subnet: subnet-hub-me-west1 (me-west1) -> PGA: ENABLED
+  [PASS] Subnet: subnet-hub-me-central1 (me-central1) -> PGA: ENABLED
+  [PASS] Subnet: subnet-hub-me-central2 (me-central2) -> PGA: ENABLED
+  [PASS] Subnet: subnet-hub-europe-north2 (europe-north2) -> PGA: ENABLED
+
+
+[*] Probing Firewall Ingress for GCP Services...
+------------------------------------------------------------
+  [PASS] Found: 130.211.0.0/22
+  [PASS] Found: 35.199.192.0/19
+  [PASS] Found: 35.235.240.0/20
+  [PASS] Found: 199.36.153.8/30
+  [PASS] Found: 35.191.0.0/16
+
+
+[*] Identifying Active Ingress Rules in karlv-corevpc for Fabric Audit...
+------------------------------------------------------------
+  -> Found: ad-rules (Allow: icmp:all)
+  -> Found: allow-azure-bgp-peer-ingress (Allow: tcp:179)
+  -> Found: allow-azure-inbound (Allow: tcp:22)
+  -> Found: allow-ha-vpn-control (Allow: udp:500,4500)
+  -> Found: allow-new-azure-ipsec (Allow: udp:500)
+  -> Found: core-firewall-rules (Allow: icmp:all)
+  -> Found: vast-rules (Allow: icmp:all)
+
+[*] PHASE 1: Client & Management Connectivity
+------------------------------------------------------------
+  [PASS] tcp   2049       NFS                  -> vast-rules
+  [PASS] tcp   445        SMB                  -> ad-rules
+  [PASS] tcp   4420       NVMe-oF              -> vast-rules
+  [PASS] tcp   443        HTTPS/Mgmt           -> core-firewall-rules
+  [PASS] tcp   80         HTTP                 -> core-firewall-rules
+  [PASS] tcp   22         SSH                  -> allow-azure-inbound
+  [PASS] tcp   389        LDAP                 -> ad-rules
+  [PASS] tcp   636        Secure LDAP          -> ad-rules
+  [PASS] tcp   3268       LDAP Cat             -> vast-rules
+  [PASS] tcp   3269       LDAP Cat SSL         -> vast-rules
+
+[*] PHASE 2: Internal Cluster Fabric (Node-to-Node)
+------------------------------------------------------------
+--- Control & Monitoring ---
+  [PASS] tcp   5551       vms_monitor          -> vast-rules
+  [PASS] tcp   6000       Leader               -> vast-rules
+  [PASS] tcp   6001       Leader Alt           -> vast-rules
+  [PASS] tcp   8000       mcvms                -> vast-rules
+  [PASS] tcp   3128       Call Home Proxy      -> vast-rules
+  [PASS] tcp   5000       Docker Registry      -> vast-rules
+
+--- Data Plane & Internal RPC ---
+  [PASS] tcp   4000       Dnode Internal       -> vast-rules
+  [PASS] tcp   4100       Dnode Internal       -> vast-rules
+  [PASS] tcp   4200       Cnode Internal       -> vast-rules
+  [PASS] tcp   4201       Cnode Internal       -> vast-rules
+  [PASS] tcp   5200       Cnode Internal Data  -> vast-rules
+  [PASS] tcp   5201       Cnode Internal Data  -> vast-rules
+  [PASS] tcp   4520       SPDK Target          -> vast-rules
+  [PASS] tcp   7000       Dnode Internal       -> vast-rules
+  [PASS] tcp   7100       Dnode Internal       -> vast-rules
+
+--- CAS & Silos (UDP/TCP) ---
+  [FAIL] udp   4001       Dnode Internal UDP   -> MISSING
+  [PASS] udp   4005       Dnode1 Platform CAS  -> vast-rules
+  [PASS] udp   4105       Dnode1 Data CAS      -> vast-rules
+  [PASS] udp   4205       CAS Operations       -> vast-rules
+  [PASS] udp   6005       Leader CAS           -> vast-rules
+  [PASS] udp   5205       Cnode Silo Start     -> vast-rules
+  [PASS] udp   5239       Cnode Silo End       -> vast-rules
+
+--- Support & RPC Services ---
+  [PASS] tcp   111        rpcbind              -> vast-rules
+  [PASS] tcp   20048      mount                -> vast-rules
+  [PASS] tcp   20106      NSM/Status           -> vast-rules
+  [PASS] tcp   20107      NLM/nlockmgr         -> vast-rules
+  [PASS] tcp   20108      NFS_RQUOTA           -> vast-rules
+  [PASS] tcp   9090       Tabular              -> vast-rules
+  [PASS] tcp   9092       Kafka                -> vast-rules
+
+
+[*] Probing Identity & Permissions...
+------------------------------------------------------------
+    Identity: terraform-sa@clouddev-itdesk124.iam.gserviceaccount.com
+    [BYPASS] Privileges: roles/editor,roles/owner
+             Owner/Editor roles override granular failures.
+
+[*] Auditing Cloud Functions...
+    [+] cloudfunctions.functions.create
+    [+] cloudfunctions.functions.delete
+    [+] cloudfunctions.functions.get
+    [+] cloudfunctions.functions.getIamPolicy
+    [+] cloudfunctions.functions.setIamPolicy
+    [+] cloudfunctions.operations.get
+    [PASS] All 6 permissions verified.
+
+[*] Auditing Compute Engine...
+    [+] compute.addresses.createInternal
+    [+] compute.addresses.deleteInternal
+    [+] compute.addresses.get
+    [+] compute.addresses.setLabels
+    [+] compute.addresses.useInternal
+    [+] compute.disks.create
+    [+] compute.disks.setLabels
+    [+] compute.healthChecks.create
+    [+] compute.healthChecks.delete
+    [+] compute.healthChecks.get
+    [+] compute.healthChecks.use
+    [+] compute.images.get
+    [+] compute.images.useReadOnly
+    [+] compute.instanceGroupManagers.create
+    [+] compute.instanceGroupManagers.delete
+    [+] compute.instanceGroupManagers.get
+    [+] compute.instanceGroups.create
+    [+] compute.instanceGroups.delete
+    [+] compute.instanceGroups.get
+    [+] compute.instanceTemplates.create
+    [+] compute.instanceTemplates.delete
+    [+] compute.instanceTemplates.get
+    [+] compute.instanceTemplates.useReadOnly
+    [+] compute.instances.create
+    [+] compute.instances.get
+    [+] compute.instances.setLabels
+    [+] compute.instances.setMetadata
+    [+] compute.instances.setTags
+    [+] compute.regionOperations.get
+    [+] compute.subnetworks.get
+    [+] compute.subnetworks.use
+    [+] compute.resourcePolicies.create
+    [+] compute.resourcePolicies.delete
+    [+] compute.resourcePolicies.get
+    [PASS] All 34 permissions verified.
+
+[*] Auditing IAM & SAs...
+    [+] iam.roles.create
+    [+] iam.roles.delete
+    [+] iam.roles.get
+    [+] iam.roles.undelete
+    [+] iam.serviceAccounts.actAs
+    [+] iam.serviceAccounts.create
+    [+] iam.serviceAccounts.delete
+    [+] iam.serviceAccounts.get
+    [PASS] All 8 permissions verified.
+
+[*] Auditing Resource Manager...
+    [+] resourcemanager.projects.get
+    [+] resourcemanager.projects.getIamPolicy
+    [+] resourcemanager.projects.setIamPolicy
+    [PASS] All 3 permissions verified.
+
+[*] Auditing Secret Manager...
+    [+] secretmanager.secrets.create
+    [+] secretmanager.secrets.delete
+    [+] secretmanager.secrets.get
+    [+] secretmanager.versions.access
+    [+] secretmanager.versions.add
+    [+] secretmanager.versions.destroy
+    [+] secretmanager.versions.enable
+    [+] secretmanager.versions.get
+    [PASS] All 8 permissions verified.
+
+[*] Auditing Cloud Storage...
+    [+] storage.buckets.create
+    [+] storage.buckets.delete
+    [-] storage.buckets.get
+    [-] storage.objects.create
+    [-] storage.objects.delete
+    [-] storage.objects.get
+    [NOTE] API reported 4 missing permissions (Overridden by roles/editor,roles/owner).
+
+
+[*] Scanning Z3 Quotas (Global Intersection)...
+------------------------------------------------------------
+  [PASS] Ready Regions: africa-south1 asia-east1 asia-south1 asia-south2 asia-southeast1 australia-southeast1 australia-southeast2 europe-north2 europe-southwest1 europe-west1 europe-west10 europe-west12 europe-west2 europe-west3 europe-west4 europe-west8 europe-west9 me-central1 me-west1 northamerica-northeast2 northamerica-south1 southamerica-east1 southamerica-west1 us-central1 us-east4 us-east5 us-south1 us-west1 us-west2 
+
+============================================================
+ QUOTA INCREASE TEMPLATE (Target: us-central1)
+============================================================
+gcloud alpha quotas preferences create --project=clouddev-itdesk124 \
+  --service=compute.googleapis.com --metric=compute.googleapis.com/cpus_per_vm_family \
+  --dimensions=vm_family=Z3,location=us-central1 --preferred-value=1500
+
+gcloud alpha quotas preferences create --project=clouddev-itdesk124 \
+  --service=compute.googleapis.com --metric=compute.googleapis.com/local_ssd_total_storage_per_vm_family \
+  --dimensions=vm_family=Z3,location=us-central1 --preferred-value=1000000
+
+============================================================
+ Validation Complete.
+============================================================
