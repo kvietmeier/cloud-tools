@@ -25,14 +25,22 @@ PROJECT_ID=$1
 VPC_NAME=$2
 SUBNET_NAME=$3
 
+# Get current project ID
+PROJECT_ID=$(gcloud config get-value project)
+if [[ -z "$PROJECT_ID" ]]; then
+    read -p "Enter Project ID: " PROJECT_ID
+    exit 1
+fi
+
 # Prompt for missing args
-[[ -z "$PROJECT_ID" ]] && read -p "Enter Project ID: " PROJECT_ID
+#[[ -z "$PROJECT_ID" ]] && read -p "Enter Project ID: " PROJECT_ID
 [[ -z "$VPC_NAME" ]] && read -p "Enter VPC Name: " VPC_NAME
 [[ -z "$SUBNET_NAME" ]] && read -p "Enter Target Subnet (Leave blank for ALL): " SUBNET_NAME
 
+
 echo "============================================================"
-echo " VAST Full-Stack Validator: $PROJECT_ID"
-echo " VPC: $VPC_NAME | Subnet: ${SUBNET_NAME:-ALL}"
+echo " VAST Full-Stack Validator Using Project: $PROJECT_ID"
+echo " VPC: $VPC_NAME |    Subnet: ${SUBNET_NAME:-ALL}"
 echo "============================================================"
 
 # ---------------------------------------------------------
