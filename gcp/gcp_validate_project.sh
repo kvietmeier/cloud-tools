@@ -5,13 +5,19 @@
 # you may not use this file except in compliance with the License.
 # ==============================================================================
 # SUMMARY:
-# This tool performs a comprehensive "ready-to-build" audit for VAST clusters
-# in Google Cloud. It validates APIs, network infrastructure (VPC, Subnets, PGA),
-# GCP Service CIDR ingress, VAST protocol/fabric firewall rules, IAM permissions,
-# and Z3 hardware quota availability.
+#   This tool performs a comprehensive "ready-to-build" audit for VAST clusters
+#   in Google Cloud. It validates APIs, network infrastructure (VPC, Subnets, PGA),
+#   GCP Service CIDR ingress, VAST protocol/fabric firewall rules, IAM permissions,
+#   and Z3 hardware quota availability.
 #
 # USAGE:
+#   * Run as the user you use to run vastcloud commands.
+#   * Ensure gcloud CLI is installed
+#   * ProjectID can be provided as an argument or will default to the active gcloud project.
+#
 #   ./gcp_check_all.sh [PROJECT_ID] [VPC_NAME] [SUBNET_NAME] [TARGET_RULE] [-v]
+#     - If arguments are omitted, the script will prompt interactively.
+#     - Use -v or --verbose to list all permissions during the IAM check. 
 # ==============================================================================
 
 # ---------------------------------------------------------
@@ -46,7 +52,7 @@ fi
 
 [[ -z "$PROJECT_ID" ]] && read -p "Enter Project ID: " PROJECT_ID
 [[ -z "$VPC_NAME" ]] && read -p "Enter VPC Name: " VPC_NAME
-[[ -z "$SUBNET_NAME" ]] && read -p "Enter Target Subnet where Cluster will be Installed (Leave blank for ALL): " SUBNET_NAME
+[[ -z "$SUBNET_NAME" ]] && read -p "Enter Subnet where Cluster will be Installed (Leave blank for ALL): " SUBNET_NAME
 [[ -z "$TARGET_RULE" ]] && read -p "Firewall Rule Name to Check (Leave blank for FULL VPC SCAN): " TARGET_RULE
 
 if [[ -z "$PROJECT_ID" ]]; then
@@ -282,10 +288,12 @@ check_iam_permissions() {
 }
 
 # ---------------------------------------------------------
-# Function: Z3 Quota Audit
+# Function: Z3 and Local SSD Quota Audit
+# Will check all regions with Z3 quota and check CPU and SSD requirements,
+# will check only the target subnet's region if provided.
 # ---------------------------------------------------------
 check_quotas() {
-    echo -e "\n[*] Scanning Z3 Quotas (Global Intersection)..."
+    echo -e "\n[*] Scanning Z3 and Local SSD Quotas (Global Intersection)..."
     echo "------------------------------------------------------------"
     QUOTAS=$(gcloud beta quotas info list --service="compute.googleapis.com" --project="$PROJECT_ID" --format="json" 2>/dev/null)
 
