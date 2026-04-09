@@ -20,40 +20,71 @@
 #     - Use -v or --verbose to list all permissions during the IAM check. 
 # ==============================================================================
 
-# ---------------------------------------------------------
-#  Need to check early for MacOS with ancient bash
-# ---------------------------------------------------------
-OS_TYPE="$(uname -s)"
 
-if [[ "$OS_TYPE" == "Darwin" ]]; then
-    BASH_MAJOR_VERSION="${BASH_VERSINFO[0]}"
+# ---------------------------------------------------------
+# Preflight Check: Bash Version + Dependencies
+# ---------------------------------------------------------
+preflight_check() {
+    REQUIRED_BASH_MAJOR=4
 
-    if [[ "$BASH_MAJOR_VERSION" -lt 4 ]]; then
-        echo "[FAIL] Unsupported Bash version on MacOS."
-        echo "       Detected Bash version: $BASH_VERSION"
+    # ---- Bash Version Enforcement ----
+    if [[ -z "${BASH_VERSINFO[*]}" ]]; then
+        echo "[FAIL] Unable to determine Bash version."
+        exit 1
+    fi
+
+    CURRENT_BASH_MAJOR="${BASH_VERSINFO[0]}"
+
+    if [[ "$CURRENT_BASH_MAJOR" -lt "$REQUIRED_BASH_MAJOR" ]]; then
+        echo "[WARN] Detected Bash $BASH_VERSION (requires >= 4.0)"
+
+        CANDIDATES=(
+            /opt/homebrew/bin/bash
+            /usr/local/bin/bash
+            /usr/bin/bash
+            /bin/bash
+        )
+
+        for NEW_BASH in "${CANDIDATES[@]}"; do
+            if [[ -x "$NEW_BASH" ]]; then
+                VERSION=$("$NEW_BASH" -c 'echo ${BASH_VERSINFO[0]}' 2>/dev/null)
+                if [[ "$VERSION" -ge "$REQUIRED_BASH_MAJOR" ]]; then
+                    echo "[INFO] Re-executing with compatible Bash: $NEW_BASH (v$VERSION)"
+                    exec "$NEW_BASH" "$0" "$@"
+                fi
+            fi
+        done
+
         echo ""
-        echo "       MacOS ships with an ancient Bash v3.x which does NOT support associative arrays."
-        echo "       This script requires Bash 4.0+."
+        echo "[FAIL] No compatible Bash (>= 4.0) found."
         echo ""
-        echo "       Fix:"
-        echo "         brew install bash"
-        echo "         Then run the script with:"
-        echo "         /opt/homebrew/bin/bash ./gcp_check_all.sh"
+        echo "Fix:"
+        echo "  macOS:  brew install bash"
+        echo "          /opt/homebrew/bin/bash $0 $@"
+        echo ""
+        echo "  Ubuntu/Debian: sudo apt-get install bash"
+        echo "  RHEL/CentOS:   sudo yum install bash"
         echo ""
         exit 1
     fi
-fi
+
+    # ---- Dependency Checks ----
+    echo "[*] Running preflight checks..."
+    for cmd in gcloud jq comm curl; do
+        if ! command -v "$cmd" &> /dev/null; then
+            echo "[FAIL] Missing dependency: $cmd"
+            exit 1
+        else
+            echo "  [PASS] Found: $cmd"
+        fi
+    done
+}
+
 
 
 # ---------------------------------------------------------
 # Global Setup & Argument Parsing
 # ---------------------------------------------------------
-for cmd in gcloud jq comm curl; do
-    if ! command -v $cmd &> /dev/null; then
-        echo "[FAIL] Missing dependency: $cmd"
-        exit 1
-    fi
-done
 
 VERBOSE=false
 POSITIONAL_ARGS=()
@@ -367,6 +398,7 @@ EOF
 # Main Execution Flow
 # ---------------------------------------------------------
 main() {
+    preflight_check
     check_apis
     check_infrastructure
     check_firewall_cidrs
