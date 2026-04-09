@@ -21,6 +21,31 @@
 # ==============================================================================
 
 # ---------------------------------------------------------
+#  Need to check early for MacOS with ancient bash
+# ---------------------------------------------------------
+OS_TYPE="$(uname -s)"
+
+if [[ "$OS_TYPE" == "Darwin" ]]; then
+    BASH_MAJOR_VERSION="${BASH_VERSINFO[0]}"
+
+    if [[ "$BASH_MAJOR_VERSION" -lt 4 ]]; then
+        echo "[FAIL] Unsupported Bash version on MacOS."
+        echo "       Detected Bash version: $BASH_VERSION"
+        echo ""
+        echo "       MacOS ships with an ancient Bash v3.x which does NOT support associative arrays."
+        echo "       This script requires Bash 4.0+."
+        echo ""
+        echo "       Fix:"
+        echo "         brew install bash"
+        echo "         Then run the script with:"
+        echo "         /opt/homebrew/bin/bash ./gcp_check_all.sh"
+        echo ""
+        exit 1
+    fi
+fi
+
+
+# ---------------------------------------------------------
 # Global Setup & Argument Parsing
 # ---------------------------------------------------------
 for cmd in gcloud jq comm curl; do
