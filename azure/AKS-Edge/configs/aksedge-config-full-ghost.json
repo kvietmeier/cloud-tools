@@ -1,0 +1,58 @@
+{
+  "SchemaVersion": "1.6",
+  "Version": "1.0",
+  "DeploymentType": "ScalableCluster",
+  "Init": {
+    "ServiceIPRangeStart": "192.168.1.210",
+    "ServiceIPRangeSize": 10
+  },
+  "Network": {
+    "VSwitch": {
+      "Name": "ExtSwitch",
+      "Type": "External"
+    },
+    "ControlPlaneEndpointIp": "192.168.1.208",
+    "ServiceIPRangeSize": 10,
+    "ServiceIPRangeStart": "192.168.1.210",
+    "ServiceIPRangeEnd": "192.168.1.219",
+    "NetworkPlugin": "calico",
+    "Ip4GatewayAddress": "192.168.1.1",
+    "Ip4PrefixLength": 24,
+    "DnsServers": [
+      "192.168.1.1",
+      "8.8.8.8"
+    ],
+    "InternetDisabled": false,
+    "SkipAddressFreeCheck": false,
+    "Proxy": {
+      "Http": null,
+      "Https": null,
+      "No": ""
+    }
+  },
+  "User": {
+    "AcceptEula": true,
+    "AcceptOptionalTelemetry": true,
+    "VolumeLicense": {
+      "EnrollmentID": null,
+      "PartNumber": null
+    }
+  },
+  "Machines": [
+    {
+      "NetworkConnection": {
+        "AdapterName": "Wi-Fi",
+        "Mtu": 0
+      },
+      "LinuxNode": {
+        "CpuCount": 6,
+        "MemoryInMB": 16384,
+        "DataSizeInGB": 500,
+        "MacAddress": null,
+        "TimeoutSeconds": 300,
+        "TpmPassthrough": false,
+        "Ip4Address": "192.168.1.209"
+      }
+    }
+  ]
+}
