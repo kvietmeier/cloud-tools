@@ -16,7 +16,7 @@ Before using these scripts, ensure your system has the following installed and c
 
 | Script | Purpose |
 |---|---|
-| `vpc-list-active.sh` | Enumerates all VPCs and their associated subnets for the currently authenticated AWS session. Accepts an optional VPC ID to target a specific environment. |
+| `vpc-list-active.sh` | Enumerates VPCs/subnets/SGs. Optional region and/or VPC ID to narrow the scan. Classifies subnets as public (IGW) or private, shows AZ + free IPs, lists security groups. |
 | `ip-list-persubnet.sh` | Lists all allocated IP addresses (and their ENI/Instance attachments) for a specific subnet. |
 | `instances-list-persubnet.sh` | Finds EC2 instances and reports their current state (running/stopped) within a specified subnet. |
 | `findami.sh` | Utility to search for and identify Amazon Machine Images (AMIs). |
