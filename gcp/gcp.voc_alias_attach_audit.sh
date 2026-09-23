@@ -1,0 +1,394 @@
+#!/bin/bash
+
+###############################################################################
+# Script:        gcp.voc_alias_attach_audit.sh
+#
+# SYNOPSIS
+#     Audit VoC cluster VIP reservations vs GCE alias IPs on eNode NICs,
+#     and surface updateNetworkInterface races / fingerprint failures.
+#
+# DESCRIPTION
+#     For a given CLUSTER_NAME this script:
+#       1. Lists reserved INTERNAL addresses named <cluster>-*
+#       2. Finds cluster VMs (label cluster_name=... or name prefix)
+#       3. Compares reserved VIP/internal IPs to nic0 aliasIpRanges
+#       4. Lists recent zone updateNetworkInterface ops (incl. BAD REQUEST)
+#       5. Optionally reads Cloud Audit Logs for alias attach payloads
+#
+#     Typical failure mode: installer SA fires concurrent NIC updates with
+#     partial alias lists + stale fingerprint → Invalid fingerprint /
+#     missing aliases even though addresses are RESERVED.
+#
+# NOTES
+#     Requires: gcloud, jq, python3
+#     Author: Karl Vietmeier
+#
+# USAGE
+#     ./gcp.voc_alias_attach_audit.sh <CLUSTER_NAME> [options]
+#
+# OPTIONS
+#     -p, --project PROJECT     GCP project (default: current gcloud config)
+#     -z, --zone ZONE           Limit instance/ops lookup to one zone
+#     -s, --since RFC3339|DATE  Ops/logs since (default: yesterday UTC date)
+#     --no-logs                 Skip Cloud Audit Logs (ops + inventory only)
+#     --json-dir DIR            Write raw JSON dumps to DIR
+#     -h, --help                Show help
+#
+# EXAMPLES
+#     ./gcp.voc_alias_attach_audit.sh seb-wmt-test
+#     ./gcp.voc_alias_attach_audit.sh seb-wmt-test -p vast-on-cloud -z us-central1-a
+#     ./gcp.voc_alias_attach_audit.sh eiki-vko-gcp-1 --since 2026-09-20 --json-dir /tmp/voc-audit
+###############################################################################
+
+set -euo pipefail
+
+CLUSTER_NAME=""
+PROJECT_ID=""
+ZONE=""
+SINCE=""
+DO_LOGS=1
+JSON_DIR=""
+
+usage() {
+  sed -n '3,45p' "$0" | sed 's/^# \?//'
+  exit "${1:-0}"
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -p|--project) PROJECT_ID="$2"; shift 2 ;;
+    -z|--zone) ZONE="$2"; shift 2 ;;
+    -s|--since) SINCE="$2"; shift 2 ;;
+    --no-logs) DO_LOGS=0; shift ;;
+    --json-dir) JSON_DIR="$2"; shift 2 ;;
+    -h|--help) usage 0 ;;
+    -*)
+      echo "Unknown option: $1" >&2
+      usage 1
+      ;;
+    *)
+      if [[ -z "$CLUSTER_NAME" ]]; then
+        CLUSTER_NAME="$1"
+        shift
+      else
+        echo "Unexpected argument: $1" >&2
+        usage 1
+      fi
+      ;;
+  esac
+done
+
+if [[ -z "$CLUSTER_NAME" ]]; then
+  read -r -p "Cluster name: " CLUSTER_NAME
+fi
+[[ -n "$CLUSTER_NAME" ]] || { echo "CLUSTER_NAME is required" >&2; exit 1; }
+
+PROJECT_ID="${PROJECT_ID:-$(gcloud config get-value project 2>/dev/null)}"
+[[ -n "$PROJECT_ID" && "$PROJECT_ID" != "(unset)" ]] || {
+  echo "No project set. Pass -p/--project or run: gcloud config set project <id>" >&2
+  exit 1
+}
+
+if [[ -z "$SINCE" ]]; then
+  if date -u -d 'yesterday' +%Y-%m-%d >/dev/null 2>&1; then
+    SINCE="$(date -u -d 'yesterday' +%Y-%m-%d)"
+  else
+    SINCE="$(date -u -v-1d +%Y-%m-%d)"
+  fi
+fi
+
+SINCE_OPS="$SINCE"
+SINCE_LOGS="$SINCE"
+if [[ "$SINCE_LOGS" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+  SINCE_LOGS="${SINCE_LOGS}T00:00:00Z"
+fi
+
+GCLOUD=(gcloud --project="$PROJECT_ID")
+if [[ -n "$JSON_DIR" ]]; then
+  mkdir -p "$JSON_DIR"
+fi
+
+save_json() {
+  local name="$1"
+  if [[ -n "$JSON_DIR" ]]; then
+    cat > "${JSON_DIR}/${name}"
+  else
+    cat >/dev/null
+  fi
+}
+
+echo "========================================================================"
+echo " VoC Alias-Attach Audit"
+echo " Project:  $PROJECT_ID"
+echo " Cluster:  $CLUSTER_NAME"
+echo " Since:    $SINCE_OPS  (logs >= $SINCE_LOGS)"
+echo " Zone:     ${ZONE:-ALL}"
+echo "========================================================================"
+
+# -------------------------------------------------------------------------
+# 1) Reserved addresses for this cluster
+# -------------------------------------------------------------------------
+echo ""
+echo "[1] Reserved INTERNAL addresses matching name~^${CLUSTER_NAME}"
+echo "------------------------------------------------------------------------"
+
+ADDR_JSON="$("${GCLOUD[@]}" compute addresses list \
+  --filter="addressType=INTERNAL AND name~^${CLUSTER_NAME}" \
+  --format=json)"
+echo "$ADDR_JSON" | save_json "addresses-${CLUSTER_NAME}.json"
+
+ADDR_COUNT="$(echo "$ADDR_JSON" | jq 'length')"
+if [[ "$ADDR_COUNT" -eq 0 ]]; then
+  echo "  [WARN] No addresses found with name prefix '${CLUSTER_NAME}'"
+else
+  printf "  %-18s %-10s %-55s %s\n" "ADDRESS" "STATUS" "NAME" "USERS"
+  echo "$ADDR_JSON" | jq -r '
+    sort_by(.address)[] |
+    [
+      .address,
+      .status,
+      .name,
+      ((.users // []) | map(split("/") | last) | join(",") // "-")
+    ] | @tsv
+  ' | while IFS=$'\t' read -r addr status name users; do
+    printf "  %-18s %-10s %-55s %s\n" "$addr" "$status" "$name" "${users:--}"
+  done
+fi
+
+# -------------------------------------------------------------------------
+# 2) Cluster VMs + alias inventory
+# -------------------------------------------------------------------------
+echo ""
+echo "[2] Cluster VMs (label cluster_name=${CLUSTER_NAME} OR name~^${CLUSTER_NAME})"
+echo "------------------------------------------------------------------------"
+
+INST_FILTER="(labels.cluster_name=${CLUSTER_NAME}) OR (name~^${CLUSTER_NAME})"
+INST_ARGS=(compute instances list --filter="$INST_FILTER" --format=json)
+if [[ -n "$ZONE" ]]; then
+  INST_ARGS+=(--zones="$ZONE")
+fi
+INST_JSON="$("${GCLOUD[@]}" "${INST_ARGS[@]}")"
+echo "$INST_JSON" | save_json "instances-${CLUSTER_NAME}.json"
+
+INST_COUNT="$(echo "$INST_JSON" | jq 'length')"
+if [[ "$INST_COUNT" -eq 0 ]]; then
+  echo "  [WARN] No instances found for cluster '${CLUSTER_NAME}'"
+else
+  echo "$INST_JSON" | jq -r '
+    .[] |
+    . as $i |
+    ($i.networkInterfaces // [])[] |
+    [
+      $i.status,
+      $i.name,
+      ($i.zone | split("/") | last),
+      (.networkIP // "-"),
+      ((.aliasIpRanges // []) | map(.ipCidrRange) | join(";") // "NONE")
+    ] | @tsv
+  ' | while IFS=$'\t' read -r status name zone primary aliases; do
+    echo "  ${status}  ${name}"
+    echo "    zone=${zone}  primary=${primary}"
+    echo "    aliases=${aliases}"
+  done
+fi
+
+# -------------------------------------------------------------------------
+# 3) Diff: reserved addrs not present as primary/alias on any VM
+# -------------------------------------------------------------------------
+echo ""
+echo "[3] Reservation ↔ NIC alias gaps"
+echo "------------------------------------------------------------------------"
+
+export VOC_ADDR_JSON="$ADDR_JSON"
+export VOC_INST_JSON="$INST_JSON"
+export VOC_CLUSTER="$CLUSTER_NAME"
+python3 <<'PY'
+import json, os
+
+addrs = json.loads(os.environ["VOC_ADDR_JSON"])
+insts = json.loads(os.environ["VOC_INST_JSON"])
+
+vm_ips = set()
+vm_alias_ips = set()
+for i in insts:
+    for nic in i.get("networkInterfaces") or []:
+        if nic.get("networkIP"):
+            vm_ips.add(nic["networkIP"])
+        for ar in nic.get("aliasIpRanges") or []:
+            cidr = ar.get("ipCidrRange") or ""
+            ip = cidr.split("/")[0]
+            if ip:
+                vm_alias_ips.add(ip)
+                vm_ips.add(ip)
+
+missing = []
+attached_ok = 0
+for a in sorted(addrs, key=lambda x: x.get("address") or ""):
+    ip = a.get("address")
+    name = a.get("name")
+    status = a.get("status")
+    users = [u.split("/")[-1] for u in (a.get("users") or [])]
+    if ip in vm_ips:
+        attached_ok += 1
+    else:
+        missing.append((ip, status, name, users))
+
+print(f"  addresses={len(addrs)}  on_nic={attached_ok}  MISSING_FROM_NIC={len(missing)}")
+if missing:
+    print("  *** GAPS (reserved/in-use IP not on any cluster VM primary or alias):")
+    for ip, status, name, users in missing:
+        print(f"      [GAP] {ip:15} {status:8} {name}  users={users or '-'}")
+else:
+    print("  [PASS] All cluster addresses appear on a VM primary or alias")
+
+reserved = {a.get("address") for a in addrs}
+orphan_aliases = sorted(vm_alias_ips - reserved)
+if orphan_aliases:
+    print("  aliases present without a matching cluster address reservation:")
+    for ip in orphan_aliases:
+        print(f"      [INFO] {ip}")
+PY
+
+# -------------------------------------------------------------------------
+# 4) Zone updateNetworkInterface operations
+# -------------------------------------------------------------------------
+echo ""
+echo "[4] Zone ops: updateNetworkInterface for ${CLUSTER_NAME} (since ${SINCE_OPS})"
+echo "------------------------------------------------------------------------"
+
+OPS_TMP="$(mktemp)"
+echo '[]' > "$OPS_TMP"
+trap 'rm -f "$OPS_TMP"' EXIT
+
+if [[ -n "$ZONE" ]]; then
+  ZONE_LIST="$ZONE"
+else
+  ZONE_LIST="$(echo "$INST_JSON" | jq -r '.[].zone | split("/") | last' | sort -u | tr '\n' ' ')"
+  if [[ -z "${ZONE_LIST// /}" ]]; then
+    ZONE_LIST="$("${GCLOUD[@]}" compute instances list \
+      --filter="name~^${CLUSTER_NAME}" \
+      --format='value(zone.basename())' 2>/dev/null | sort -u | tr '\n' ' ')"
+  fi
+fi
+
+for z in $ZONE_LIST; do
+  [[ -z "$z" ]] && continue
+  echo "  zone=${z}"
+  ZOPS="$("${GCLOUD[@]}" compute operations list \
+    --zones="$z" \
+    --filter="targetLink~${CLUSTER_NAME} AND insertTime>${SINCE_OPS}" \
+    --format=json 2>/dev/null || echo '[]')"
+  jq -s '.[0] + .[1]' "$OPS_TMP" <(echo "$ZOPS") > "${OPS_TMP}.new"
+  mv "${OPS_TMP}.new" "$OPS_TMP"
+
+  echo "$ZOPS" | jq -r '
+    [.[] | select(.operationType == "updateNetworkInterface")] |
+    if length == 0 then
+      "    (no updateNetworkInterface ops)"
+    else
+      .[] |
+      "    \(.insertTime)  \(if .httpErrorStatusCode then "ERR=\(.httpErrorStatusCode) \(.httpErrorMessage // "")" else "OK" end)  \(.user // "-")  target=\((.targetLink // "") | split("/") | last)  \(.name)"
+    end
+  '
+done
+
+OPS_ALL="$(cat "$OPS_TMP")"
+echo "$OPS_ALL" | save_json "zone-ops-${CLUSTER_NAME}.json"
+
+FAIL_COUNT="$(echo "$OPS_ALL" | jq '[.[] | select(.operationType=="updateNetworkInterface" and .httpErrorStatusCode != null)] | length')"
+echo ""
+echo "  updateNetworkInterface failures: ${FAIL_COUNT}"
+
+if [[ "$FAIL_COUNT" -gt 0 ]]; then
+  echo "$OPS_ALL" | jq -c '
+    .[] | select(.operationType=="updateNetworkInterface" and .httpErrorStatusCode != null)
+  ' | while read -r row; do
+    opname="$(echo "$row" | jq -r '.name')"
+    z="$(echo "$row" | jq -r '.targetLink | split("/zones/")[1] | split("/")[0]')"
+    echo ""
+    echo "  --- failure detail ---"
+    echo "  COMMAND: gcloud compute operations describe ${opname} --zone=${z} --project=${PROJECT_ID}"
+    DESC="$("${GCLOUD[@]}" compute operations describe "$opname" --zone="$z" --format=json)"
+    if [[ -n "$JSON_DIR" ]]; then
+      echo "$DESC" > "${JSON_DIR}/op-${opname}.json"
+    fi
+    echo "$DESC" | jq '{name, insertTime, user, httpErrorStatusCode, httpErrorMessage, error, targetLink}'
+  done
+fi
+
+# -------------------------------------------------------------------------
+# 5) Cloud Audit Logs (optional)
+# -------------------------------------------------------------------------
+if [[ "$DO_LOGS" -eq 1 ]]; then
+  echo ""
+  echo "[5] Cloud Audit Logs: instances.updateNetworkInterface (since ${SINCE_LOGS})"
+  echo "------------------------------------------------------------------------"
+  echo "  COMMAND: gcloud logging read \\"
+  echo "    'protoPayload.methodName=\"v1.compute.instances.updateNetworkInterface\""
+  echo "     AND protoPayload.resourceName:\"${CLUSTER_NAME}-enode\""
+  echo "     AND timestamp>=\"${SINCE_LOGS}\"' \\"
+  echo "    --project=${PROJECT_ID} --format=json --limit=100"
+
+  LOG_JSON="$("${GCLOUD[@]}" logging read \
+    "protoPayload.methodName=\"v1.compute.instances.updateNetworkInterface\" AND protoPayload.resourceName:\"${CLUSTER_NAME}-enode\" AND timestamp>=\"${SINCE_LOGS}\"" \
+    --format=json \
+    --limit=100 2>/dev/null || echo '[]')"
+  echo "$LOG_JSON" | save_json "audit-updateNetworkInterface-${CLUSTER_NAME}.json"
+
+  LOG_COUNT="$(echo "$LOG_JSON" | jq 'length')"
+  echo "  entries=${LOG_COUNT}"
+
+  if [[ "$LOG_COUNT" -gt 0 ]]; then
+    export VOC_LOG_JSON="$LOG_JSON"
+    python3 <<'PY'
+import json, os
+logs = json.loads(os.environ["VOC_LOG_JSON"])
+
+def aliases(req):
+    if not isinstance(req, dict):
+        return []
+    nic = req.get("networkInterface")
+    if isinstance(nic, dict):
+        return [a.get("ipCidrRange") for a in (nic.get("aliasIpRanges") or [])]
+    return [a.get("ipCidrRange") for a in (req.get("aliasIpRanges") or [])]
+
+print(f"  {'TIMESTAMP(UTC)':<28} {'':<4} {'INSTANCE':<42} ALIASES / MSG")
+print("  " + "-" * 120)
+for e in sorted(logs, key=lambda x: x.get("timestamp") or ""):
+    pp = e.get("protoPayload") or {}
+    st = pp.get("status") or {}
+    code = st.get("code", 0) or 0
+    msg = st.get("message") or "OK"
+    inst = (pp.get("resourceName") or "").split("/")[-1]
+    al = aliases(pp.get("request") or {})
+    al_s = ";".join(x for x in al if x) if al else "(no alias payload)"
+    flag = "ERR" if code else "ok "
+    print(f"  {e.get('timestamp',''):<28} {flag} {inst:<42} {al_s}")
+    if code:
+        print(f"      -> {msg}")
+PY
+  else
+    echo "  (no audit entries — check Logging API perms or widen --since)"
+  fi
+else
+  echo ""
+  echo "[5] Cloud Audit Logs skipped (--no-logs)"
+fi
+
+# -------------------------------------------------------------------------
+# 6) Remediation hint
+# -------------------------------------------------------------------------
+echo ""
+echo "[6] Remediation (if gaps found)"
+echo "------------------------------------------------------------------------"
+echo "  # Inspect current aliases"
+echo "  gcloud compute instances describe <ENODE_VM> --zone=<ZONE> --project=${PROJECT_ID} \\"
+echo "    --format='yaml(networkInterfaces)'"
+echo ""
+echo "  # Attach FULL alias set in ONE update (replace-all; include every VIP):"
+echo "  gcloud compute instances network-interfaces update <ENODE_VM> \\"
+echo "    --zone=<ZONE> --project=${PROJECT_ID} --network-interface=nic0 \\"
+echo "    --aliases='A.B.C.D/32;E.F.G.H/32;...'"
+echo ""
+echo "  Do NOT fan out one-VIP-per-RPC in parallel (causes Invalid fingerprint)."
+echo "========================================================================"
