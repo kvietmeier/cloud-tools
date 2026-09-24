@@ -222,6 +222,7 @@ cluster = os.environ.get("VOC_CLUSTER", "")
 project = os.environ.get("VOC_PROJECT", "PROJECT")
 rc_file = os.environ["VOC_AUDIT_RC_FILE"]
 exit_rc = 0
+# 0=ok, 2=live dns-vip gap, 3=orphaned reservations (no VMs)
 
 vm_ips = set()
 vm_alias_ips = set()
@@ -247,35 +248,69 @@ for i in insts:
             "nic": nic.get("name") or "nic0",
         })
 
-missing = []
-attached_ok = 0
-for a in sorted(addrs, key=lambda x: x.get("address") or ""):
-    ip = a.get("address")
-    name = a.get("name")
-    status = a.get("status")
-    users = [u.split("/")[-1] for u in (a.get("users") or [])]
-    if ip in vm_ips:
-        attached_ok += 1
-    else:
-        missing.append((ip, status, name, users))
+orphans = [
+    a for a in addrs
+    if a.get("status") == "RESERVED" and not (a.get("users") or [])
+]
+live = bool(vms)
+torn_down_leak = (not live) and bool(orphans)
 
-print(f"  addresses={len(addrs)}  on_nic={attached_ok}  MISSING_FROM_NIC={len(missing)}")
-if missing:
-    print("  *** GAPS (reserved/in-use IP not on any cluster VM primary or alias):")
-    for ip, status, name, users in missing:
-        tag = "DNS-VIP" if str(name).endswith("-dns-vip") else "GAP"
-        print(f"      [{tag}] {ip:15} {status:8} {name}  users={users or '-'}")
+if torn_down_leak:
+    exit_rc = 3
+    print(f"  [ORPHAN] No VMs for '{cluster}' but {len(orphans)} RESERVED address(es) remain")
+    print("           Cluster looks deleted; teardown left VIP/node IP reservations.")
+    print("           This is NOT a DNS-VIP attach failure on a live cluster.")
+    print("")
+    print("  Orphaned reservations:")
+    for a in sorted(orphans, key=lambda x: x.get("address") or ""):
+        print(f"      [ORPHAN] {a.get('address'):15} {a.get('name')}")
+    print("")
+    # Guess region from first address
+    region = "REGION"
+    if orphans:
+        r = (orphans[0].get("region") or "")
+        if r:
+            region = r.split("/")[-1]
+        elif orphans[0].get("subnetwork"):
+            # fallback hint
+            region = "us-central1"
+    print("  Cleanup (review first):")
+    print(f"    gcloud compute addresses list --project={project} --filter='name~^{cluster}' \\")
+    print("      --format='value(name,region.basename(),status)'")
+    print(f"    # then for each RESERVED name:")
+    print(f"    # gcloud compute addresses delete NAME --region={region} --project={project} --quiet")
 else:
-    print("  [PASS] All cluster addresses appear on a VM primary or alias")
+    missing = []
+    attached_ok = 0
+    for a in sorted(addrs, key=lambda x: x.get("address") or ""):
+        ip = a.get("address")
+        name = a.get("name")
+        status = a.get("status")
+        users = [u.split("/")[-1] for u in (a.get("users") or [])]
+        if ip in vm_ips:
+            attached_ok += 1
+        else:
+            missing.append((ip, status, name, users))
 
-reserved = {a.get("address") for a in addrs}
-orphan_aliases = sorted(vm_alias_ips - reserved)
-if orphan_aliases:
-    print("  aliases present without a matching cluster address reservation:")
-    for ip in orphan_aliases:
-        print(f"      [INFO] {ip}")
+    print(f"  addresses={len(addrs)}  on_nic={attached_ok}  MISSING_FROM_NIC={len(missing)}")
+    if missing:
+        print("  *** GAPS (reserved/in-use IP not on any cluster VM primary or alias):")
+        for ip, status, name, users in missing:
+            tag = "DNS-VIP" if str(name).endswith("-dns-vip") else "GAP"
+            print(f"      [{tag}] {ip:15} {status:8} {name}  users={users or '-'}")
+    elif addrs:
+        print("  [PASS] All cluster addresses appear on a VM primary or alias")
+    else:
+        print("  [INFO] No addresses and no instances — nothing to audit")
 
-# --- Explicit DNS VIP ---
+    reserved = {a.get("address") for a in addrs}
+    orphan_aliases = sorted(vm_alias_ips - reserved)
+    if orphan_aliases:
+        print("  aliases present without a matching cluster address reservation:")
+        for ip in orphan_aliases:
+            print(f"      [INFO] {ip}")
+
+# --- Explicit DNS VIP (only meaningful on a LIVE cluster) ---
 print("")
 print("[3b] DNS VIP (explicit)")
 print("-" * 72)
@@ -284,8 +319,21 @@ dns = next((a for a in addrs if (a.get("name") or "") == dns_name), None)
 if dns is None:
     dns = next((a for a in addrs if (a.get("name") or "").endswith("-dns-vip")), None)
 
-if dns is None:
-    print(f"  [FAIL] No address named '{dns_name}' found")
+if torn_down_leak:
+    if dns:
+        print(f"  name:    {dns.get('name')}")
+        print(f"  address: {dns.get('address')}")
+        print(f"  status:  {dns.get('status')} (orphaned with cluster)")
+        print("  [SKIP] DNS VIP attach check — no live VMs (see ORPHAN above)")
+    else:
+        print(f"  [SKIP] No '{dns_name}' among orphans (may never have been created, or already deleted)")
+        print("         Primary issue is leaked RESERVED addresses, not DNS attach.")
+elif not live and not addrs:
+    print("  [SKIP] No cluster resources found")
+elif not live:
+    print("  [SKIP] No live VMs — DNS VIP attach check not applicable")
+elif dns is None:
+    print(f"  [FAIL] No address named '{dns_name}' found on LIVE cluster")
     print("         TF normally reserves this; install often never attaches it.")
     exit_rc = 2
 else:
@@ -451,23 +499,26 @@ fi
 echo ""
 echo "[6] Remediation (if gaps found)"
 echo "------------------------------------------------------------------------"
-echo "  # Inspect current aliases"
+echo "  # Live cluster — inspect / attach aliases"
 echo "  gcloud compute instances describe <ENODE_VM> --zone=<ZONE> --project=${PROJECT_ID} \\"
 echo "    --format='yaml(networkInterfaces)'"
-echo ""
-echo "  # Attach FULL alias set in ONE update (replace-all; include every VIP):"
 echo "  gcloud compute instances network-interfaces update <ENODE_VM> \\"
 echo "    --zone=<ZONE> --project=${PROJECT_ID} --network-interface=nic0 \\"
-echo "    --aliases='A.B.C.D/32;E.F.G.H/32;...'"
+echo "    --aliases='A.B.C.D/32;E.F.G.H/32;...'   # full set, one update"
 echo ""
-echo "  # DNS VIP: see [3b] above for the reserved address and a ready-to-run attach command."
+echo "  # Orphaned CI cluster (no VMs, RESERVED addrs left behind) — release IPs:"
+echo "  gcloud compute addresses list --project=${PROJECT_ID} --filter='name~^${CLUSTER_NAME}' \\"
+echo "    --format='table(name,address,status,region.basename())'"
+echo "  # gcloud compute addresses delete NAME --region=REGION --project=${PROJECT_ID} --quiet"
+echo ""
+echo "  # DNS VIP on LIVE cluster: see [3b]. Exit codes: 0=ok 2=live dns-vip gap 3=orphan leak"
 echo "  Do NOT fan out one-VIP-per-RPC in parallel (causes Invalid fingerprint)."
 echo "========================================================================"
 
-DNS_RC="$(cat "$AUDIT_RC_FILE" 2>/dev/null || echo 0)"
-if [[ "$DNS_RC" != "0" ]]; then
-  echo "RESULT: DNS VIP check FAILED (exit ${DNS_RC})"
-  exit "$DNS_RC"
-fi
-echo "RESULT: DNS VIP check PASS"
-exit 0
+AUDIT_RC="$(cat "$AUDIT_RC_FILE" 2>/dev/null || echo 0)"
+case "$AUDIT_RC" in
+  2) echo "RESULT: DNS VIP check FAILED on LIVE cluster (exit 2)"; exit 2 ;;
+  3) echo "RESULT: ORPHANED reservations (cluster gone, IPs leaked) (exit 3)"; exit 3 ;;
+  0) echo "RESULT: PASS"; exit 0 ;;
+  *) echo "RESULT: FAILED (exit ${AUDIT_RC})"; exit "$AUDIT_RC" ;;
+esac
