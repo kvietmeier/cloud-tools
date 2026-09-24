@@ -77,7 +77,7 @@ gcloud config get-value account
 
 ### VoC alias-attach audit (cluster name is required)
 
-Use when a cluster has reserved VIPs but eNodes are missing aliases (often `Invalid fingerprint` from concurrent NIC updates). Also prints an **explicit DNS VIP** check on **live** clusters (exit **2** if missing/unattached). If the cluster is gone but `RESERVED` addresses remain, reports **ORPHAN** leak (exit **3**) instead of a false DNS-VIP failure.
+Use when a cluster has reserved VIPs but eNodes are missing aliases (often `Invalid fingerprint` from concurrent NIC updates). Nodes are identified by network tag **`voc-internal`** (Polaris puts it on every cluster node) plus `labels.cluster_name` or name prefix. **DNS VIP:** Polaris may omit it, or reserve it and leave it unattached until DNS is enabled — both OK (`[3b]`). Exit **3** if no live (RUNNING/STAGING) nodes but `RESERVED` addresses remain (orphan leak).
 
 ```bash
 cd gcp

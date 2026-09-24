@@ -10,7 +10,8 @@
 # DESCRIPTION
 #     For a given CLUSTER_NAME this script:
 #       1. Lists reserved INTERNAL addresses named <cluster>-*
-#       2. Finds cluster VMs (label cluster_name=... or name prefix)
+#       2. Finds Polaris/VoC nodes: network tag voc-internal (on every
+#          cluster node) AND (label cluster_name=... OR name prefix)
 #       3. Compares reserved VIP/internal IPs to nic0 aliasIpRanges
 #       4. Lists recent zone updateNetworkInterface ops (incl. BAD REQUEST)
 #       5. Optionally reads Cloud Audit Logs for alias attach payloads
@@ -159,10 +160,12 @@ fi
 # 2) Cluster VMs + alias inventory
 # -------------------------------------------------------------------------
 echo ""
-echo "[2] Cluster VMs (label cluster_name=${CLUSTER_NAME} OR name~^${CLUSTER_NAME})"
+echo "[2] Cluster VMs (tag=voc-internal AND cluster_name/name~^${CLUSTER_NAME})"
 echo "------------------------------------------------------------------------"
+echo "  VAST marker: network tag 'voc-internal' (Polaris: on every cluster node)"
 
-INST_FILTER="(labels.cluster_name=${CLUSTER_NAME}) OR (name~^${CLUSTER_NAME})"
+# voc-internal is applied to all VoC instance templates (enode/cnode/vms/dnode).
+INST_FILTER="(tags.items=voc-internal) AND ((labels.cluster_name=${CLUSTER_NAME}) OR (name~^${CLUSTER_NAME}))"
 INST_ARGS=(compute instances list --filter="$INST_FILTER" --format=json)
 if [[ -n "$ZONE" ]]; then
   INST_ARGS+=(--zones="$ZONE")
@@ -172,7 +175,14 @@ echo "$INST_JSON" | save_json "instances-${CLUSTER_NAME}.json"
 
 INST_COUNT="$(echo "$INST_JSON" | jq 'length')"
 if [[ "$INST_COUNT" -eq 0 ]]; then
-  echo "  [WARN] No instances found for cluster '${CLUSTER_NAME}'"
+  echo "  [WARN] No voc-internal instances for cluster '${CLUSTER_NAME}'"
+  SOFT_JSON="$("${GCLOUD[@]}" compute instances list \
+    --filter="(labels.cluster_name=${CLUSTER_NAME}) OR (name~^${CLUSTER_NAME})" \
+    --format=json 2>/dev/null || echo '[]')"
+  SOFT_COUNT="$(echo "$SOFT_JSON" | jq 'length')"
+  if [[ "$SOFT_COUNT" -gt 0 ]]; then
+    echo "  [INFO] ${SOFT_COUNT} name/label match(es) lack tag voc-internal — not treated as VAST cluster nodes"
+  fi
 else
   echo "$INST_JSON" | jq -r '
     .[] |
@@ -182,11 +192,12 @@ else
       $i.status,
       $i.name,
       ($i.zone | split("/") | last),
+      (([$i.labels.cluster_name // "-", $i.labels["voc-cluster-role"] // "-"] | join("/"))),
       (.networkIP // "-"),
       ((.aliasIpRanges // []) | map(.ipCidrRange) | join(";") // "NONE")
     ] | @tsv
-  ' | while IFS=$'\t' read -r status name zone primary aliases; do
-    echo "  ${status}  ${name}"
+  ' | while IFS=$'\t' read -r status name zone labels primary aliases; do
+    echo "  ${status}  ${name}  (${labels})"
     echo "    zone=${zone}  primary=${primary}"
     echo "    aliases=${aliases}"
   done
@@ -227,8 +238,13 @@ exit_rc = 0
 vm_ips = set()
 vm_alias_ips = set()
 vms = []
+# Instance list is already filtered to tags.items=voc-internal (VAST nodes).
+# Treat only RUNNING/STAGING as live so destroy-in-progress (STOPPING) is not.
+LIVE_STATUSES = {"RUNNING", "STAGING"}
 for i in insts:
     zone = (i.get("zone") or "").split("/")[-1]
+    status = i.get("status") or ""
+    tags = set((i.get("tags") or {}).get("items") or [])
     for nic in i.get("networkInterfaces") or []:
         aliases = set()
         if nic.get("networkIP"):
@@ -243,6 +259,8 @@ for i in insts:
         vms.append({
             "name": i.get("name"),
             "zone": zone,
+            "status": status,
+            "tags": tags,
             "primary": nic.get("networkIP"),
             "aliases": aliases,
             "nic": nic.get("name") or "nic0",
@@ -252,8 +270,17 @@ orphans = [
     a for a in addrs
     if a.get("status") == "RESERVED" and not (a.get("users") or [])
 ]
-live = bool(vms)
+live_vms = [v for v in vms if v["status"] in LIVE_STATUSES]
+live = bool(live_vms)
 torn_down_leak = (not live) and bool(orphans)
+
+if vms and not live:
+    stopping = sorted({v["name"] for v in vms if v["status"] not in LIVE_STATUSES})
+    print(f"  [INFO] {len(vms)} voc-internal VM(s) but none RUNNING/STAGING — treat as not live")
+    for n in stopping:
+        st = next(v["status"] for v in vms if v["name"] == n)
+        print(f"           {n}  status={st}")
+    print("")
 
 if torn_down_leak:
     exit_rc = 3
@@ -282,26 +309,34 @@ if torn_down_leak:
 else:
     missing = []
     attached_ok = 0
+    dns_pending = []  # reserved dns-vip, expected until DNS service enabled
     for a in sorted(addrs, key=lambda x: x.get("address") or ""):
         ip = a.get("address")
-        name = a.get("name")
+        name = a.get("name") or ""
         status = a.get("status")
         users = [u.split("/")[-1] for u in (a.get("users") or [])]
         if ip in vm_ips:
             attached_ok += 1
+        elif name.endswith("-dns-vip"):
+            dns_pending.append((ip, status, name))
         else:
             missing.append((ip, status, name, users))
 
-    print(f"  addresses={len(addrs)}  on_nic={attached_ok}  MISSING_FROM_NIC={len(missing)}")
+    print(f"  addresses={len(addrs)}  on_nic={attached_ok}  MISSING_FROM_NIC={len(missing)}  dns_vip_pending={len(dns_pending)}")
     if missing:
         print("  *** GAPS (reserved/in-use IP not on any cluster VM primary or alias):")
         for ip, status, name, users in missing:
-            tag = "DNS-VIP" if str(name).endswith("-dns-vip") else "GAP"
-            print(f"      [{tag}] {ip:15} {status:8} {name}  users={users or '-'}")
-    elif addrs:
+            print(f"      [GAP] {ip:15} {status:8} {name}  users={users or '-'}")
+    elif addrs and not dns_pending:
         print("  [PASS] All cluster addresses appear on a VM primary or alias")
+    elif addrs and not missing:
+        print("  [PASS] Non-DNS addresses on NICs; DNS VIP pending is expected (see [3b])")
     else:
         print("  [INFO] No addresses and no instances — nothing to audit")
+
+    if dns_pending:
+        for ip, status, name in dns_pending:
+            print(f"      [DNS-PENDING] {ip:15} {status:8} {name}  (OK until DNS service enabled)")
 
     reserved = {a.get("address") for a in addrs}
     orphan_aliases = sorted(vm_alias_ips - reserved)
@@ -310,7 +345,9 @@ else:
         for ip in orphan_aliases:
             print(f"      [INFO] {ip}")
 
-# --- Explicit DNS VIP (only meaningful on a LIVE cluster) ---
+# --- Explicit DNS VIP ---
+# Polaris: often absent, or reserved and left unattached until DNS service is
+# enabled on the cluster. Neither is an audit failure.
 print("")
 print("[3b] DNS VIP (explicit)")
 print("-" * 72)
@@ -324,21 +361,17 @@ if torn_down_leak:
         print(f"  name:    {dns.get('name')}")
         print(f"  address: {dns.get('address')}")
         print(f"  status:  {dns.get('status')} (orphaned with cluster)")
-        print("  [SKIP] DNS VIP attach check — no live VMs (see ORPHAN above)")
+        print("  [SKIP] DNS VIP lifecycle check — no live VMs (see ORPHAN above)")
     else:
-        print(f"  [SKIP] No '{dns_name}' among orphans (may never have been created, or already deleted)")
-        print("         Primary issue is leaked RESERVED addresses, not DNS attach.")
+        print(f"  [SKIP] No '{dns_name}' among orphans")
+        print("         Primary issue is leaked RESERVED addresses, not DNS.")
 elif not live and not addrs:
     print("  [SKIP] No cluster resources found")
 elif not live:
-    print("  [SKIP] No live VMs — DNS VIP attach check not applicable")
+    print("  [SKIP] No live VMs — DNS VIP check not applicable")
 elif dns is None:
-    print(f"  [FAIL] No address named '{dns_name}' found")
-    print("         VMs are running but TF did not reserve a DNS VIP (or it was deleted).")
-    print("         Mid-install: other VIPs may already be IN_USE while dns-vip is absent")
-    print("         if this module/version never creates it — check polaris TF for dns_vip.")
-    print("         Not an orphan leak (instances exist).")
-    exit_rc = 2
+    print(f"  [OK] No address named '{dns_name}'")
+    print("       Some Polaris deploys omit dns-vip until/unless DNS is used.")
 else:
     ip = dns.get("address")
     status = dns.get("status")
@@ -352,23 +385,12 @@ else:
     if holders:
         for v in holders:
             where = "ALIAS" if ip in v["aliases"] else "PRIMARY"
-            print(f"  [PASS] Attached as {where} on {v['name']} ({v['zone']})")
+            print(f"  [OK] Attached as {where} on {v['name']} ({v['zone']})")
+            print("       DNS service has likely been enabled (VIP is on a NIC).")
     else:
-        exit_rc = 2
-        print("  [FAIL] Reserved but NOT attached to any cluster VM NIC/alias")
-        print("         IP is allocated in GCP but never published to the operator / NIC.")
-        target = next((v for v in vms if "enode" in (v["name"] or "")), None)
-        if target is None and vms:
-            target = vms[0]
-        if target:
-            existing = sorted(target["aliases"])
-            new_aliases = existing + ([ip] if ip not in existing else [])
-            alias_arg = ";".join(f"{a}/32" for a in new_aliases)
-            print("  Remediation (ONE update; include existing aliases — replace-all):")
-            print(f"    gcloud compute instances network-interfaces update {target['name']} \\")
-            print(f"      --zone={target['zone']} --project={project} \\")
-            print(f"      --network-interface={target['nic']} \\")
-            print(f"      --aliases='{alias_arg}'")
+        print("  [OK] Reserved but not attached (Polaris default until DNS is enabled)")
+        print("       Enable DNS on the cluster to have install attach this VIP;")
+        print("       not an alias-attach race / teardown failure.")
 
 with open(rc_file, "w") as f:
     f.write(str(exit_rc))
@@ -387,7 +409,7 @@ else
   ZONE_LIST="$(echo "$INST_JSON" | jq -r '.[].zone | split("/") | last' | sort -u | tr '\n' ' ')"
   if [[ -z "${ZONE_LIST// /}" ]]; then
     ZONE_LIST="$("${GCLOUD[@]}" compute instances list \
-      --filter="name~^${CLUSTER_NAME}" \
+      --filter="(tags.items=voc-internal) AND (name~^${CLUSTER_NAME})" \
       --format='value(zone.basename())' 2>/dev/null | sort -u | tr '\n' ' ')"
   fi
 fi
@@ -505,24 +527,6 @@ echo "------------------------------------------------------------------------"
 
 AUDIT_RC="$(cat "$AUDIT_RC_FILE" 2>/dev/null || echo 0)"
 case "$AUDIT_RC" in
-  2)
-    echo "  Live cluster is missing an attached DNS VIP (see [3b])."
-    echo "  If [3b] printed a reserved address + attach command, run that ONE update"
-    echo "  (include existing aliases — replace-all)."
-    echo ""
-    echo "  If no '*-dns-vip' address exists at all, TF never reserved it for this"
-    echo "  deploy — fix is in the install module / polaris pipeline, not gcloud delete."
-    echo ""
-    echo "  Inspect NICs:"
-    echo "    gcloud compute instances list --project=${PROJECT_ID} \\"
-    echo "      --filter='labels.cluster_name=${CLUSTER_NAME}' \\"
-    echo "      --format='table(name,zone.basename(),networkInterfaces[0].networkIP,networkInterfaces[0].aliasIpRanges[].ipCidrRange.list())'"
-    echo ""
-    echo "  Do NOT fan out one-VIP-per-RPC in parallel (Invalid fingerprint)."
-    echo "========================================================================"
-    echo "RESULT: DNS VIP check FAILED on LIVE cluster (exit 2)"
-    exit 2
-    ;;
   3)
     echo "  Cluster VMs are gone; RESERVED addresses are leaked (see [3] ORPHAN list)."
     echo "  Release them after review:"
@@ -535,7 +539,8 @@ case "$AUDIT_RC" in
     exit 3
     ;;
   0)
-    echo "  No action required."
+    echo "  DNS VIP: absent or reserved-until-DNS-enabled is normal Polaris behavior."
+    echo "  Exit codes: 0=ok  3=orphan leak after teardown"
     echo "========================================================================"
     echo "RESULT: PASS"
     exit 0
