@@ -213,12 +213,14 @@ echo "------------------------------------------------------------------------"
 
 AUDIT_RC_FILE="$(mktemp)"
 AUDIT_DETAIL_FILE="$(mktemp)"
+AUDIT_REMEDIATE_FILE="$(mktemp)"
 OPS_TMP="$(mktemp)"
 echo 0 > "$AUDIT_RC_FILE"
 : > "$AUDIT_DETAIL_FILE"
+: > "$AUDIT_REMEDIATE_FILE"
 echo '[]' > "$OPS_TMP"
 # shellcheck disable=SC2064
-trap 'rm -f "$OPS_TMP" "$AUDIT_RC_FILE" "$AUDIT_DETAIL_FILE"' EXIT
+trap 'rm -f "$OPS_TMP" "$AUDIT_RC_FILE" "$AUDIT_DETAIL_FILE" "$AUDIT_REMEDIATE_FILE"' EXIT
 
 export VOC_ADDR_JSON="$ADDR_JSON"
 export VOC_INST_JSON="$INST_JSON"
@@ -226,6 +228,7 @@ export VOC_CLUSTER="$CLUSTER_NAME"
 export VOC_PROJECT="$PROJECT_ID"
 export VOC_AUDIT_RC_FILE="$AUDIT_RC_FILE"
 export VOC_AUDIT_DETAIL_FILE="$AUDIT_DETAIL_FILE"
+export VOC_AUDIT_REMEDIATE_FILE="$AUDIT_REMEDIATE_FILE"
 
 python3 <<'PY'
 import json, os
@@ -236,13 +239,20 @@ cluster = os.environ.get("VOC_CLUSTER", "")
 project = os.environ.get("VOC_PROJECT", "PROJECT")
 rc_file = os.environ["VOC_AUDIT_RC_FILE"]
 detail_file = os.environ.get("VOC_AUDIT_DETAIL_FILE", "")
+remediate_file = os.environ.get("VOC_AUDIT_REMEDIATE_FILE", "")
 exit_rc = 0
 # 0=ok, 2=live cluster VIP/alias gaps, 3=orphaned reservations (no live VMs)
 detail_lines = []
+remediate_lines = []
 
 def emit(line=""):
+    """Error facts for [3] (and echoed at top of [6]). No remediation commands."""
     print(line)
     detail_lines.append(line)
+
+def remediate(line=""):
+    """Commands / cleanup — printed only in [6]."""
+    remediate_lines.append(line)
 
 vm_ips = set()
 vm_alias_ips = set()
@@ -300,21 +310,18 @@ if torn_down_leak:
     emit("  Orphaned reservations:")
     for a in sorted(orphans, key=lambda x: x.get("address") or ""):
         emit(f"      [ORPHAN] {a.get('address'):15} {a.get('name')}")
-    emit("")
-    # Guess region from first address
     region = "REGION"
     if orphans:
         r = (orphans[0].get("region") or "")
         if r:
             region = r.split("/")[-1]
         elif orphans[0].get("subnetwork"):
-            # fallback hint
             region = "us-central1"
-    emit("  Cleanup (review first):")
-    emit(f"    gcloud compute addresses list --project={project} --filter='name~^{cluster}' \\")
-    emit("      --format='value(name,region.basename(),status)'")
-    emit(f"    # then for each RESERVED name:")
-    emit(f"    # gcloud compute addresses delete NAME --region={region} --project={project} --quiet")
+    remediate("  Cleanup (review first):")
+    remediate(f"    gcloud compute addresses list --project={project} --filter='name~^{cluster}' \\")
+    remediate("      --format='value(name,region.basename(),status)'")
+    remediate("    # then for each RESERVED name:")
+    remediate(f"    # gcloud compute addresses delete NAME --region={region} --project={project} --quiet")
 else:
     missing = []
     attached_ok = 0
@@ -355,12 +362,12 @@ else:
             emit("")
             emit(f"  Target eNode: {target['name']}  zone={target['zone']}  nic={target['nic']}")
             emit(f"  Current aliases on NIC: {';'.join(existing) if existing else '(none)'}")
-            emit("  Remediation (ONE update; include ALL aliases — replace-all):")
-            emit(f"    gcloud compute instances network-interfaces update {target['name']} \\")
-            emit(f"      --zone={target['zone']} --project={project} \\")
-            emit(f"      --network-interface={target['nic']} \\")
-            emit(f"      --aliases='{alias_arg}'")
-            emit("    # Do NOT fan out one-VIP-per-RPC in parallel (Invalid fingerprint).")
+            remediate("  Remediation (ONE update; include ALL aliases — replace-all):")
+            remediate(f"    gcloud compute instances network-interfaces update {target['name']} \\")
+            remediate(f"      --zone={target['zone']} --project={project} \\")
+            remediate(f"      --network-interface={target['nic']} \\")
+            remediate(f"      --aliases='{alias_arg}'")
+            remediate("    # Do NOT fan out one-VIP-per-RPC in parallel (Invalid fingerprint).")
     elif addrs and not dns_pending:
         print("  [PASS] All cluster addresses appear on a VM primary or alias")
     elif addrs and not missing:
@@ -434,6 +441,9 @@ with open(rc_file, "w") as f:
 if detail_file and detail_lines:
     with open(detail_file, "w") as f:
         f.write("\n".join(detail_lines) + "\n")
+if remediate_file and remediate_lines:
+    with open(remediate_file, "w") as f:
+        f.write("\n".join(remediate_lines) + "\n")
 PY
 
 # -------------------------------------------------------------------------
@@ -490,12 +500,32 @@ if [[ "$FAIL_COUNT" -gt 0 ]]; then
     z="$(echo "$row" | jq -r '.targetLink | split("/zones/")[1] | split("/")[0]')"
     echo ""
     echo "  --- failure detail ---"
-    echo "  COMMAND: gcloud compute operations describe ${opname} --zone=${z} --project=${PROJECT_ID}"
+    echo "  op=${opname}  zone=${z}"
     DESC="$("${GCLOUD[@]}" compute operations describe "$opname" --zone="$z" --format=json)"
     if [[ -n "$JSON_DIR" ]]; then
       echo "$DESC" > "${JSON_DIR}/op-${opname}.json"
     fi
-    echo "$DESC" | jq '{name, insertTime, user, httpErrorStatusCode, httpErrorMessage, error, targetLink}'
+    # Expand the actual API error (Invalid fingerprint, etc.)
+    echo "$DESC" | python3 -c "
+import json, sys
+op = json.load(sys.stdin)
+print('  time:   {}'.format(op.get('insertTime')))
+print('  user:   {}'.format(op.get('user')))
+http = '{} {}'.format(op.get('httpErrorStatusCode') or '', op.get('httpErrorMessage') or '').strip()
+print('  http:   {}'.format(http))
+print('  target: {}'.format((op.get('targetLink') or '').split('/')[-1]))
+errs = ((op.get('error') or {}).get('errors') or [])
+if errs:
+    print('  errors:')
+    for e in errs:
+        code = e.get('code') or ''
+        msg = e.get('message') or ''
+        print('    [{}] {}'.format(code, msg) if code else '    {}'.format(msg))
+elif op.get('statusMessage'):
+    print('  statusMessage: {}'.format(op.get('statusMessage')))
+else:
+    print('  (no error.errors[] on operation — check audit logs in [5])')
+"
   done
 fi
 
@@ -523,32 +553,110 @@ if [[ "$DO_LOGS" -eq 1 ]]; then
 
   if [[ "$LOG_COUNT" -gt 0 ]]; then
     export VOC_LOG_JSON="$LOG_JSON"
+    export VOC_ADDR_JSON="$ADDR_JSON"
     python3 <<'PY'
 import json, os
+
 logs = json.loads(os.environ["VOC_LOG_JSON"])
+addrs = json.loads(os.environ.get("VOC_ADDR_JSON") or "[]")
+# Expected VIP/internal IPs (exclude dns-vip — attach is optional)
+expected = set()
+for a in addrs:
+    name = a.get("name") or ""
+    ip = a.get("address")
+    if not ip:
+        continue
+    if name.endswith("-dns-vip"):
+        continue
+    # node primaries are IN_USE as users on instances — still expect aliases for *-vip / *-internal-*
+    if ("-vip" in name) or ("-internal-" in name):
+        expected.add(ip)
 
 def aliases(req):
+    """Request shapes vary: aliasIpRanges on request OR under networkInterface object."""
     if not isinstance(req, dict):
         return []
+    ranges = req.get("aliasIpRanges")
+    if isinstance(ranges, list):
+        return [a.get("ipCidrRange") for a in ranges if isinstance(a, dict)]
     nic = req.get("networkInterface")
     if isinstance(nic, dict):
-        return [a.get("ipCidrRange") for a in (nic.get("aliasIpRanges") or [])]
-    return [a.get("ipCidrRange") for a in (req.get("aliasIpRanges") or [])]
+        return [a.get("ipCidrRange") for a in (nic.get("aliasIpRanges") or []) if isinstance(a, dict)]
+    return []
 
-print(f"  {'TIMESTAMP(UTC)':<28} {'':<4} {'INSTANCE':<42} ALIASES / MSG")
+def fingerprint(req):
+    if not isinstance(req, dict):
+        return None
+    if req.get("fingerprint"):
+        return "(present)"
+    nic = req.get("networkInterface")
+    if isinstance(nic, dict) and nic.get("fingerprint"):
+        return "(present)"
+    return None
+
+def expand_status(st):
+    """Pull userVisibleReason / nested messages out of status.details."""
+    msgs = []
+    top = st.get("message")
+    if top:
+        msgs.append(str(top))
+
+    def walk(o):
+        if isinstance(o, dict):
+            for k, v in o.items():
+                if k in ("userVisibleReason", "errorMessage", "httpErrorMessage", "description") and isinstance(v, str) and v:
+                    msgs.append(v)
+                else:
+                    walk(v)
+        elif isinstance(o, list):
+            for v in o:
+                walk(v)
+
+    walk(st.get("details") or [])
+    # de-dupe preserving order
+    out = []
+    for m in msgs:
+        if m not in out:
+            out.append(m)
+    return out
+
+print(f"  {'TIMESTAMP(UTC)':<28} {'':<4} {'INSTANCE':<42} ALIASES")
 print("  " + "-" * 120)
+err_n = 0
+partial_n = 0
 for e in sorted(logs, key=lambda x: x.get("timestamp") or ""):
     pp = e.get("protoPayload") or {}
     st = pp.get("status") or {}
     code = st.get("code", 0) or 0
-    msg = st.get("message") or "OK"
     inst = (pp.get("resourceName") or "").split("/")[-1]
-    al = aliases(pp.get("request") or {})
-    al_s = ";".join(x for x in al if x) if al else "(no alias payload)"
-    flag = "ERR" if code else "ok "
-    print(f"  {e.get('timestamp',''):<28} {flag} {inst:<42} {al_s}")
+    req = pp.get("request") or {}
+    al = [x for x in aliases(req) if x]
+    al_s = ";".join(al) if al else "(no alias payload)"
+    principal = ((pp.get("authenticationInfo") or {}).get("principalEmail") or "-")
+    fp = fingerprint(req)
     if code:
-        print(f"      -> {msg}")
+        flag = "ERR"
+        err_n += 1
+    else:
+        flag = "ok "
+    print(f"  {e.get('timestamp',''):<28} {flag} {inst:<42} {al_s}")
+    print(f"      principal={principal}  fingerprint={fp or '(none/omitted)'}")
+    if code:
+        for m in expand_status(st):
+            print(f"      ERROR: {m}")
+    elif al and expected:
+        attached = {cidr.split("/")[0] for cidr in al}
+        missing = sorted(expected - attached)
+        if missing:
+            partial_n += 1
+            print(f"      PARTIAL attach: missing {len(missing)} expected VIP(s): {', '.join(missing)}")
+
+print("")
+print(f"  summary: entries={len(logs)}  ERR={err_n}  PARTIAL_ok_payloads={partial_n}")
+if err_n:
+    print("  ERR rows expand status.message + status.details.*.userVisibleReason (e.g. Invalid fingerprint).")
+if partial_n:
+    print("  PARTIAL = RPC succeeded but alias list did not include all reserved VIP/internal IPs.")
 PY
   else
     echo "  (no audit entries — check Logging API perms or widen --since)"
@@ -559,7 +667,7 @@ else
 fi
 
 # -------------------------------------------------------------------------
-# 6) Remediation — only for the actual verdict
+# 6) Remediation — commands only here (not mixed into [3]/[5])
 # -------------------------------------------------------------------------
 echo ""
 echo "[6] Remediation"
@@ -569,11 +677,14 @@ AUDIT_RC="$(cat "$AUDIT_RC_FILE" 2>/dev/null || echo 0)"
 case "$AUDIT_RC" in
   2)
     if [[ -s "$AUDIT_DETAIL_FILE" ]]; then
+      echo "  --- error summary ---"
       cat "$AUDIT_DETAIL_FILE"
       echo ""
     fi
-    echo "  Do NOT attach one VIP per parallel RPC (Invalid fingerprint)."
-    echo ""
+    if [[ -s "$AUDIT_REMEDIATE_FILE" ]]; then
+      cat "$AUDIT_REMEDIATE_FILE"
+      echo ""
+    fi
     echo "  Inspect:"
     echo "    gcloud compute instances list --project=${PROJECT_ID} \\"
     echo "      --filter='(tags.items=voc-internal) AND (labels.cluster_name=${CLUSTER_NAME})' \\"
@@ -584,7 +695,12 @@ case "$AUDIT_RC" in
     ;;
   3)
     if [[ -s "$AUDIT_DETAIL_FILE" ]]; then
+      echo "  --- error summary ---"
       cat "$AUDIT_DETAIL_FILE"
+      echo ""
+    fi
+    if [[ -s "$AUDIT_REMEDIATE_FILE" ]]; then
+      cat "$AUDIT_REMEDIATE_FILE"
       echo ""
     fi
     echo "========================================================================"
@@ -592,7 +708,7 @@ case "$AUDIT_RC" in
     exit 3
     ;;
   0)
-    echo "  DNS VIP: absent or reserved-until-DNS-enabled is normal Polaris behavior."
+    echo "  No remediation needed."
     echo "  Exit codes: 0=ok  2=live VIP/alias gaps  3=orphan leak after teardown"
     echo "========================================================================"
     echo "RESULT: PASS"
