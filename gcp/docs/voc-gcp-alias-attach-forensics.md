@@ -5,7 +5,8 @@
 **Status:** Observations and evidence only — not a design proposal  
 **Date:** 2026-09-24  
 **Clusters examined:** `karlv-foobar-01`, `karlv-foobar-02` (project `vast-on-cloud`, zone `us-central1-a`)  
-**Build seen in VMS deploy checkpoint:** `release-5-4-2-4K-2255166` / image `polaris-voc-5-4-2-2255166`
+**Build seen in VMS deploy checkpoint:** `release-5-4-2-4K-2255166` / image `polaris-voc-5-4-2-2255166`  
+**Field context:** Same fingerprint / partial-alias class of symptoms has been seen more than once in lab, including on larger (~8-node) clusters; this write-up uses the foobar pair because the cloud_cli + Compute audit trail is complete and recent.
 
 This note summarizes what we can see from **GCP Compute operations**, **Cloud Audit Logs**, and **on-node logs shipped via ops-agent** (configured in Polaris `cloud-init.yaml`). We are sharing it so engineering can validate or correct our reading of the install path.
 
@@ -183,6 +184,39 @@ We do not own the assign path; these are questions where your reading would help
 3. **Caller** — Which VMS / install step invokes parallel `assign_ip` for replication VIPs (the dual-PID window)? We only see the `cloud_cli` side clearly.
 4. **Recent change?** — Field reports this was less visible earlier last week on “same” bundles. We do not have a commit bisect; if anything changed in VIP publish parallelism, retry timing, or VIP count, that would be useful context. Timing-dependent races can also appear without a code change.
 5. **Dummy `/32`** — Still required for the google-cloud-python limitation cited in TF? Understanding that constraint helps field interpret “EXTRA” aliases correctly.
+6. **Larger clusters** — Field has seen the same fingerprint / partial-alias class of symptoms on larger (e.g. multi-node / ~8-node) deploys, not only 1-node lab clusters. If engineering already treats fingerprint mismatch lines as routine, it would help to know whether those are expected to be **always** followed by a successful merge of the full VIP set, and how that is verified (beyond `assign_ip returned 0` on a single IP).
+
+---
+
+## 5b. On “we see those errors all the time”
+
+Fingerprint mismatch / `PreconditionFailed` / `Invalid fingerprint` lines in `cloud_cli` can look routine because:
+
+- Retries often eventually log `succefully assigned ips=(...)` / `assign_ip returned 0` for **that one IP**.
+- A later deploy or manual check may show “enough” VIPs present for basic mgmt access.
+- The message is familiar in GCP optimistic-locking generally.
+
+What the foobar timelines show in addition (worth separating from “harmless noise”):
+
+| Familiar log line | What we also measured on the same timeline |
+|-------------------|--------------------------------------------|
+| `fingerprint mismatch` / retry | Two PIDs started `_update_network_interface` with the **same** fingerprint ~10–100ms apart |
+| `assign_ip returned 0` for IP *A* | A later PATCH for IP *B* omitted *A* from `alias_ip_ranges` (replace-all subset) |
+| Compute op `OK` | Cloud Audit payload was **PARTIAL** vs the reserved VIP set |
+| Retry succeeds | Final NIC can still be missing a reserved VIP (e.g. mgmt-vip) while dummy `/32` remains |
+
+So the open question is not “do fingerprint errors appear in logs?” — field agrees they do. It is whether **routine** fingerprint traffic is always accompanied by a final NIC state that matches the **full** reserved VIP/internal set for that cluster. On the clusters above, that end-state check failed at points during/after install even when individual assigns reported success.
+
+A cheap validation either side can run after VIP publish (no code change required):
+
+```bash
+# Reserved VIP/internal (exclude dns-vip if DNS not enabled) vs eNode aliases
+./gcp.voc_alias_attach_audit.sh <CLUSTER> -p <PROJECT> --no-logs   # section [3]
+# or with cloud_cli evidence:
+./gcp.voc_alias_attach_audit.sh <CLUSTER> -p <PROJECT>
+```
+
+If engineering already has an equivalent post-condition in CI / install health, pointing us at it would close the loop.
 
 ---
 
@@ -190,6 +224,7 @@ We do not own the assign path; these are questions where your reading would help
 
 - We are **not** asserting a root-cause commit or owning a patch.
 - We are **not** asking for a specific API redesign in this note.
+- We are **not** saying every fingerprint log line equals a customer outage — only that on examined clusters the same window correlates with **partial / raced alias sets**, which is a stronger claim than log noise alone.
 - DNS VIP left `RESERVED` until DNS is enabled looks like expected product behavior from what we see in Polaris TF/defaults; it is out of scope for the fingerprint discussion.
 - Intermittent success on other clusters is compatible with a timing-dependent race; absence of failure on a given deploy does not by itself disprove the concurrent-fingerprint pattern above.
 
