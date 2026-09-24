@@ -233,7 +233,7 @@ cluster = os.environ.get("VOC_CLUSTER", "")
 project = os.environ.get("VOC_PROJECT", "PROJECT")
 rc_file = os.environ["VOC_AUDIT_RC_FILE"]
 exit_rc = 0
-# 0=ok, 2=live dns-vip gap, 3=orphaned reservations (no VMs)
+# 0=ok, 2=live cluster VIP/alias gaps, 3=orphaned reservations (no live VMs)
 
 vm_ips = set()
 vm_alias_ips = set()
@@ -324,9 +324,31 @@ else:
 
     print(f"  addresses={len(addrs)}  on_nic={attached_ok}  MISSING_FROM_NIC={len(missing)}  dns_vip_pending={len(dns_pending)}")
     if missing:
+        exit_rc = 2
         print("  *** GAPS (reserved/in-use IP not on any cluster VM primary or alias):")
         for ip, status, name, users in missing:
             print(f"      [GAP] {ip:15} {status:8} {name}  users={users or '-'}")
+        # Prefer an eNode for alias attach remediation
+        target = next((v for v in live_vms if "enode" in (v["name"] or "")), None)
+        if target is None and live_vms:
+            target = live_vms[0]
+        if target:
+            existing = sorted(target["aliases"])
+            gap_ips = [ip for ip, _, _, _ in missing if ip]
+            # Keep existing aliases; add missing VIPs (replace-all semantics)
+            new_aliases = existing[:]
+            for ip in gap_ips:
+                if ip not in new_aliases:
+                    new_aliases.append(ip)
+            alias_arg = ";".join(f"{a}/32" for a in new_aliases)
+            print("")
+            print("  Remediation hint (ONE update; include ALL aliases — replace-all):")
+            print(f"    gcloud compute instances network-interfaces update {target['name']} \\")
+            print(f"      --zone={target['zone']} --project={project} \\")
+            print(f"      --network-interface={target['nic']} \\")
+            print(f"      --aliases='{alias_arg}'")
+            print("    # Review first: only eNode should hold mgmt/internal VIP aliases;")
+            print("    # do NOT fan out one-VIP-per-RPC in parallel (Invalid fingerprint).")
     elif addrs and not dns_pending:
         print("  [PASS] All cluster addresses appear on a VM primary or alias")
     elif addrs and not missing:
@@ -343,7 +365,7 @@ else:
     if orphan_aliases:
         print("  aliases present without a matching cluster address reservation:")
         for ip in orphan_aliases:
-            print(f"      [INFO] {ip}")
+            print(f"      [INFO] {ip}  (on NIC but no <cluster>-* address reservation)")
 
 # --- Explicit DNS VIP ---
 # Polaris: often absent, or reserved and left unattached until DNS service is
@@ -527,6 +549,20 @@ echo "------------------------------------------------------------------------"
 
 AUDIT_RC="$(cat "$AUDIT_RC_FILE" 2>/dev/null || echo 0)"
 case "$AUDIT_RC" in
+  2)
+    echo "  Live cluster: reserved VIP/internal IPs missing from NIC aliases (see [3] GAP)."
+    echo "  DNS VIP reserved-unattached is OK; other RESERVED gaps are NOT."
+    echo "  Use the ONE network-interfaces update under [3] (replace-all aliases)."
+    echo "  Do NOT attach one VIP per parallel RPC (Invalid fingerprint)."
+    echo ""
+    echo "  Inspect:"
+    echo "    gcloud compute instances list --project=${PROJECT_ID} \\"
+    echo "      --filter='(tags.items=voc-internal) AND (labels.cluster_name=${CLUSTER_NAME})' \\"
+    echo "      --format='table(name,zone.basename(),status,networkInterfaces[0].networkIP,networkInterfaces[0].aliasIpRanges[].ipCidrRange.list())'"
+    echo "========================================================================"
+    echo "RESULT: VIP/alias GAP on LIVE cluster (exit 2)"
+    exit 2
+    ;;
   3)
     echo "  Cluster VMs are gone; RESERVED addresses are leaked (see [3] ORPHAN list)."
     echo "  Release them after review:"
@@ -540,7 +576,7 @@ case "$AUDIT_RC" in
     ;;
   0)
     echo "  DNS VIP: absent or reserved-until-DNS-enabled is normal Polaris behavior."
-    echo "  Exit codes: 0=ok  3=orphan leak after teardown"
+    echo "  Exit codes: 0=ok  2=live VIP/alias gaps  3=orphan leak after teardown"
     echo "========================================================================"
     echo "RESULT: PASS"
     exit 0
