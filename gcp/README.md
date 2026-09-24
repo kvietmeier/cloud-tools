@@ -8,7 +8,7 @@ Auth and shell aliases live in `system-tools`. Runnable multi-step cloud jobs li
 
 * **gcloud** — Google Cloud SDK, authenticated (`gcloud auth login`) with an active project (`gcloud config set project <id>`)
 * **jq** — JSON processing (`brew install jq` on macOS)
-* **python3** — required by `gcp.voc_alias_attach_audit.sh`
+* **python3** — required by `gcp.voc_alias_attach_audit.sh` / `gcp.voc_ip_orphan_scan.sh`
 * **curl** — required by `gcp_check_perms.sh` / validator IAM checks
 * Bash 4+ recommended for `gcp_validate_project.sh` (macOS system Bash is 3.2; use Homebrew Bash if needed)
 
@@ -30,6 +30,7 @@ Auth and shell aliases live in `system-tools`. Runnable multi-step cloud jobs li
 | Script | Purpose |
 |--------|---------|
 | `gcp.voc_alias_attach_audit.sh` | **Per-cluster** audit: reserved VIP/internal IPs vs eNode `aliasIpRanges`, `updateNetworkInterface` ops (incl. Invalid fingerprint), optional Cloud Audit Logs |
+| `gcp.voc_ip_orphan_scan.sh` | **Project-wide**: group `GCE_ENDPOINT` INTERNAL IPs by cluster prefix and mark **ORPHAN** (RESERVED, no live VMs) vs **LIVE** |
 | `gcp.list_priv_ips.sh` | Table of all reserved INTERNAL addresses in the current project |
 | `gcp_check_ports.sh` | Audit VPC firewall ingress for VAST protocol/fabric ports |
 | `gcp.setupnewvpc.sh` | Create multi-region custom VPC (subnets, Cloud NAT, PGA, baseline firewall) |
@@ -114,6 +115,25 @@ gcloud compute instances network-interfaces update <ENODE_VM> \
   --network-interface=nic0 \
   --aliases='10.x.x.x/32;10.x.x.y/32;...'
 ```
+
+### Project-wide orphan VIP / IP scan
+
+When a project has a long list of `IN_USE` / `RESERVED` `GCE_ENDPOINT` addresses and you need to know which clusters are still up vs teardown leaks:
+
+```bash
+./gcp.voc_ip_orphan_scan.sh
+./gcp.voc_ip_orphan_scan.sh -p vast-on-cloud --orphans-only --delete-cmds
+```
+
+| Flag | Meaning |
+|------|---------|
+| `-p, --project` | GCP project (default: active config) |
+| `--all-internal` | All INTERNAL addresses (not only `purpose=GCE_ENDPOINT`) |
+| `--orphans-only` | Only print ORPHAN clusters |
+| `--delete-cmds` | Print commented `gcloud compute addresses delete` lines |
+| `--json-dir DIR` | Dump raw addresses / instances JSON |
+
+Exit **3** if any ORPHAN groups exist. For one cluster’s NIC/alias deep dive, use `gcp.voc_alias_attach_audit.sh`.
 
 ### List reserved internal IPs
 
