@@ -333,8 +333,11 @@ elif not live and not addrs:
 elif not live:
     print("  [SKIP] No live VMs — DNS VIP attach check not applicable")
 elif dns is None:
-    print(f"  [FAIL] No address named '{dns_name}' found on LIVE cluster")
-    print("         TF normally reserves this; install often never attaches it.")
+    print(f"  [FAIL] No address named '{dns_name}' found")
+    print("         VMs are running but TF did not reserve a DNS VIP (or it was deleted).")
+    print("         Mid-install: other VIPs may already be IN_USE while dns-vip is absent")
+    print("         if this module/version never creates it — check polaris TF for dns_vip.")
+    print("         Not an orphan leak (instances exist).")
     exit_rc = 2
 else:
     ip = dns.get("address")
@@ -494,31 +497,53 @@ else
 fi
 
 # -------------------------------------------------------------------------
-# 6) Remediation hint
+# 6) Remediation — only for the actual verdict
 # -------------------------------------------------------------------------
 echo ""
-echo "[6] Remediation (if gaps found)"
+echo "[6] Remediation"
 echo "------------------------------------------------------------------------"
-echo "  # Live cluster — inspect / attach aliases"
-echo "  gcloud compute instances describe <ENODE_VM> --zone=<ZONE> --project=${PROJECT_ID} \\"
-echo "    --format='yaml(networkInterfaces)'"
-echo "  gcloud compute instances network-interfaces update <ENODE_VM> \\"
-echo "    --zone=<ZONE> --project=${PROJECT_ID} --network-interface=nic0 \\"
-echo "    --aliases='A.B.C.D/32;E.F.G.H/32;...'   # full set, one update"
-echo ""
-echo "  # Orphaned CI cluster (no VMs, RESERVED addrs left behind) — release IPs:"
-echo "  gcloud compute addresses list --project=${PROJECT_ID} --filter='name~^${CLUSTER_NAME}' \\"
-echo "    --format='table(name,address,status,region.basename())'"
-echo "  # gcloud compute addresses delete NAME --region=REGION --project=${PROJECT_ID} --quiet"
-echo ""
-echo "  # DNS VIP on LIVE cluster: see [3b]. Exit codes: 0=ok 2=live dns-vip gap 3=orphan leak"
-echo "  Do NOT fan out one-VIP-per-RPC in parallel (causes Invalid fingerprint)."
-echo "========================================================================"
 
 AUDIT_RC="$(cat "$AUDIT_RC_FILE" 2>/dev/null || echo 0)"
 case "$AUDIT_RC" in
-  2) echo "RESULT: DNS VIP check FAILED on LIVE cluster (exit 2)"; exit 2 ;;
-  3) echo "RESULT: ORPHANED reservations (cluster gone, IPs leaked) (exit 3)"; exit 3 ;;
-  0) echo "RESULT: PASS"; exit 0 ;;
-  *) echo "RESULT: FAILED (exit ${AUDIT_RC})"; exit "$AUDIT_RC" ;;
+  2)
+    echo "  Live cluster is missing an attached DNS VIP (see [3b])."
+    echo "  If [3b] printed a reserved address + attach command, run that ONE update"
+    echo "  (include existing aliases — replace-all)."
+    echo ""
+    echo "  If no '*-dns-vip' address exists at all, TF never reserved it for this"
+    echo "  deploy — fix is in the install module / polaris pipeline, not gcloud delete."
+    echo ""
+    echo "  Inspect NICs:"
+    echo "    gcloud compute instances list --project=${PROJECT_ID} \\"
+    echo "      --filter='labels.cluster_name=${CLUSTER_NAME}' \\"
+    echo "      --format='table(name,zone.basename(),networkInterfaces[0].networkIP,networkInterfaces[0].aliasIpRanges[].ipCidrRange.list())'"
+    echo ""
+    echo "  Do NOT fan out one-VIP-per-RPC in parallel (Invalid fingerprint)."
+    echo "========================================================================"
+    echo "RESULT: DNS VIP check FAILED on LIVE cluster (exit 2)"
+    exit 2
+    ;;
+  3)
+    echo "  Cluster VMs are gone; RESERVED addresses are leaked (see [3] ORPHAN list)."
+    echo "  Release them after review:"
+    echo "    gcloud compute addresses list --project=${PROJECT_ID} \\"
+    echo "      --filter='name~^${CLUSTER_NAME} AND status=RESERVED' \\"
+    echo "      --format='table(name,address,status,region.basename())'"
+    echo "    # gcloud compute addresses delete NAME --region=REGION --project=${PROJECT_ID} --quiet"
+    echo "========================================================================"
+    echo "RESULT: ORPHANED reservations (cluster gone, IPs leaked) (exit 3)"
+    exit 3
+    ;;
+  0)
+    echo "  No action required."
+    echo "========================================================================"
+    echo "RESULT: PASS"
+    exit 0
+    ;;
+  *)
+    echo "  Unexpected status (exit ${AUDIT_RC}). Re-check [3]/[3b]."
+    echo "========================================================================"
+    echo "RESULT: FAILED (exit ${AUDIT_RC})"
+    exit "$AUDIT_RC"
+    ;;
 esac
