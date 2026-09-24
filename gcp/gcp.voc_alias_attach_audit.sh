@@ -657,6 +657,88 @@ if err_n:
     print("  ERR rows expand status.message + status.details.*.userVisibleReason (e.g. Invalid fingerprint).")
 if partial_n:
     print("  PARTIAL = RPC succeeded but alias list did not include all reserved VIP/internal IPs.")
+
+# --- Forensics: incremental attach + near-concurrent races ---
+# Only consider rows that actually carried an alias payload (drop empty echo/completion rows).
+events = []
+for e in sorted(logs, key=lambda x: x.get("timestamp") or ""):
+    pp = e.get("protoPayload") or {}
+    st = pp.get("status") or {}
+    code = st.get("code", 0) or 0
+    req = pp.get("request") or {}
+    al = [x for x in aliases(req) if x]
+    if not al and not code:
+        continue
+    attached = {cidr.split("/")[0] for cidr in al}
+    events.append({
+        "ts": e.get("timestamp") or "",
+        "code": code,
+        "al": al,
+        "ips": attached,
+        "errs": expand_status(st) if code else [],
+    })
+
+if len(events) >= 1:
+    print("")
+    print("  --- forensics (alias-bearing updates only) ---")
+    prev_ips = set()
+    for i, ev in enumerate(events):
+        added = sorted(ev["ips"] - prev_ips) if prev_ips else sorted(ev["ips"])
+        removed = sorted(prev_ips - ev["ips"]) if prev_ips else []
+        extra = sorted(ev["ips"] - expected) if expected else []
+        miss = sorted(expected - ev["ips"]) if expected else []
+        flag = "ERR" if ev["code"] else "ok "
+        print(f"  {ev['ts']}  {flag}  n={len(ev['ips'])}  aliases={';'.join(ev['al']) if ev['al'] else '(none)'}")
+        if added:
+            print(f"      +added:   {', '.join(added)}")
+        if removed:
+            print(f"      -removed: {', '.join(removed)}  (replace-all dropped these)")
+        if extra:
+            print(f"      EXTRA:    {', '.join(extra)}  (on NIC payload but NOT a <cluster> VIP/internal reservation)")
+        if miss and not ev["code"]:
+            print(f"      still missing reserved: {', '.join(miss)}")
+        if ev["errs"]:
+            for m in ev["errs"]:
+                print(f"      ERROR: {m}")
+        if not ev["code"]:
+            prev_ips = set(ev["ips"])
+
+    # Near-concurrent pairs (< 500ms) → fingerprint race signature
+    def parse_ts(ts):
+        # 2026-09-24T23:34:10.739783Z
+        try:
+            from datetime import datetime
+            return datetime.strptime(ts[:26].ljust(26, "0"), "%Y-%m-%dT%H:%M:%S.%f")
+        except Exception:
+            return None
+
+    races = []
+    for i in range(len(events) - 1):
+        a, b = events[i], events[i + 1]
+        ta, tb = parse_ts(a["ts"]), parse_ts(b["ts"])
+        if ta is None or tb is None:
+            continue
+        delta_ms = (tb - ta).total_seconds() * 1000.0
+        if delta_ms < 500 and a["ips"] and b["ips"] and a["ips"] != b["ips"]:
+            races.append((delta_ms, a, b))
+
+    if races:
+        print("")
+        print(f"  RACE WINDOWS: {len(races)} pair(s) of alias updates <500ms apart with DIFFERENT alias sets")
+        print("  (classic Invalid fingerprint / last-writer-wins when installer fans out one-VIP-per-RPC)")
+        for delta_ms, a, b in races:
+            print(f"    Δ={delta_ms:.0f}ms")
+            print(f"      A: {a['ts']}  {';'.join(a['al'])}")
+            print(f"      B: {b['ts']}  {';'.join(b['al'])}")
+    else:
+        # Still flag strictly incremental growth (serial one-VIP-at-a-time)
+        sizes = [len(ev["ips"]) for ev in events if not ev["code"] and ev["ips"]]
+        if len(sizes) >= 3 and all(sizes[i] <= sizes[i + 1] for i in range(len(sizes) - 1)) and sizes[-1] > sizes[0]:
+            print("")
+            print("  PATTERN: serial incremental alias growth (n={}) — replace-all one VIP at a time.".format(
+                " → ".join(str(s) for s in sizes)
+            ))
+            print("  Safer: single updateNetworkInterface with the FULL VIP set.")
 PY
   else
     echo "  (no audit entries — check Logging API perms or widen --since)"
