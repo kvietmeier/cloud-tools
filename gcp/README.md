@@ -29,7 +29,7 @@ Auth and shell aliases live in `system-tools`. Runnable multi-step cloud jobs li
 
 | Script | Purpose |
 |--------|---------|
-| `gcp.voc_alias_attach_audit.sh` | **Per-cluster** audit: reserved VIP/internal IPs vs eNode `aliasIpRanges`, `updateNetworkInterface` ops (incl. Invalid fingerprint), optional Cloud Audit Logs |
+| `gcp.voc_alias_attach_audit.sh` | **Per-cluster** audit: reserved VIP/internal IPs vs eNode aliases, Compute ops, Cloud Audit Logs, optional **cloud_cli** ops-agent lines; forensics note in `docs/voc-gcp-alias-attach-forensics.md` |
 | `gcp.voc_ip_orphan_scan.sh` | **Project-wide**: group `GCE_ENDPOINT` INTERNAL IPs by cluster prefix and mark **ORPHAN** (RESERVED, no live VMs) vs **LIVE** |
 | `gcp.list_priv_ips.sh` | Table of all reserved INTERNAL addresses in the current project |
 | `gcp_check_ports.sh` | Audit VPC firewall ingress for VAST protocol/fabric ports |

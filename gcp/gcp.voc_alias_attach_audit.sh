@@ -735,17 +735,138 @@ if len(events) >= 1:
         sizes = [len(ev["ips"]) for ev in events if not ev["code"] and ev["ips"]]
         if len(sizes) >= 3 and all(sizes[i] <= sizes[i + 1] for i in range(len(sizes) - 1)) and sizes[-1] > sizes[0]:
             print("")
-            print("  PATTERN: serial incremental alias growth (n={}) — replace-all one VIP at a time.".format(
+            print("  PATTERN: serial incremental alias growth (n={})".format(
                 " → ".join(str(s) for s in sizes)
             ))
-            print("  Safer: single updateNetworkInterface with the FULL VIP set.")
+            print("  (each successful PATCH carries a growing/partial set — see forensics doc)")
 PY
   else
     echo "  (no audit entries — check Logging API perms or widen --since)"
   fi
+
+  # -----------------------------------------------------------------------
+  # 5b) On-node cloud_cli logs (ops-agent → Cloud Logging)
+  #     Evidence only — assign_ip / fingerprint lines if present
+  # -----------------------------------------------------------------------
+  echo ""
+  echo "[5b] cloud_cli logs (ops-agent logName=cloud-cli, since ${SINCE_LOGS})"
+  echo "------------------------------------------------------------------------"
+  CLUSTER_ID="$(echo "$INST_JSON" | jq -r '[.[] | .labels.cluster_id // empty] | first // empty')"
+  if [[ -z "$CLUSTER_ID" ]]; then
+    echo "  [SKIP] No labels.cluster_id on matched instances — cannot filter cloud_cli by cluster"
+  else
+    echo "  cluster_id=${CLUSTER_ID}"
+    echo "  COMMAND: gcloud logging read \\"
+    echo "    'resource.type=\"gce_instance\" AND labels.cluster_id=\"${CLUSTER_ID}\""
+    echo "     AND logName=\"projects/${PROJECT_ID}/logs/cloud-cli\""
+    echo "     AND timestamp>=\"${SINCE_LOGS}\"' \\"
+    echo "    --project=${PROJECT_ID} --format=json --limit=200"
+    CLI_JSON="$("${GCLOUD[@]}" logging read \
+      "resource.type=\"gce_instance\" AND labels.cluster_id=\"${CLUSTER_ID}\" AND logName=\"projects/${PROJECT_ID}/logs/cloud-cli\" AND timestamp>=\"${SINCE_LOGS}\"" \
+      --format=json \
+      --limit=200 2>/dev/null || echo '[]')"
+    echo "$CLI_JSON" | save_json "cloud-cli-${CLUSTER_NAME}.json"
+    export VOC_CLI_JSON="$CLI_JSON"
+    python3 <<'PY'
+import json, os, re
+from collections import defaultdict
+
+raw = os.environ.get("VOC_CLI_JSON") or "[]"
+try:
+    logs = json.loads(raw)
+except Exception:
+    logs = []
+
+def msg(e):
+    jp = e.get("jsonPayload") or {}
+    t = e.get("textPayload")
+    if t:
+        return str(t)
+    if isinstance(jp, dict) and jp.get("message"):
+        return str(jp["message"])
+    return ""
+
+# Keep lines that look like VIP attach / fingerprint handling
+keep_re = re.compile(
+    r"assign_ip|_assign_ips|_update_network_interface|fingerprint|PreconditionFailed|"
+    r"failed to configure interface|succefully assigned|successfully assigned|dummy",
+    re.I,
+)
+pid_re = re.compile(r"\(P(\d+)\)")
+fp_re = re.compile(r"fingerprint='([^']+)'")
+ip_assign_re = re.compile(r"assign_ip,\s*args:\s*ip=\(([^)]+)\)")
+ip_ok_re = re.compile(r"assigned ips=\(([^)]+)\)", re.I)
+
+rows = []
+for e in logs:
+    m = " ".join(msg(e).split())
+    if not m or not keep_re.search(m):
+        continue
+    rows.append((e.get("timestamp") or "", m))
+
+rows.sort(key=lambda x: x[0])
+print(f"  cloud_cli entries scanned={len(logs)}  attach-related lines={len(rows)}")
+if not rows:
+    print("  (no assign_ip / fingerprint lines in window — widen --since or check ops-agent)")
+else:
+    print(f"  {'TIMESTAMP(UTC)':<28} cloud_cli")
+    print("  " + "-" * 100)
+    for ts, m in rows[:80]:
+        print(f"  {ts:<28} {m[:160]}")
+        if len(m) > 160:
+            print(f"  {'':<28} ...{m[160:300]}")
+    if len(rows) > 80:
+        print(f"  ... truncated {len(rows) - 80} more lines (see --json-dir)")
+
+    # Concurrent assign_ip by PID within 500ms (observation aid)
+    events = []
+    for ts, m in rows:
+        if "assign_ip, args:" not in m and "assigning ip" not in m.lower():
+            continue
+        pid_m = pid_re.search(m)
+        ip_m = ip_assign_re.search(m)
+        events.append({
+            "ts": ts,
+            "pid": pid_m.group(1) if pid_m else "?",
+            "ip": (ip_m.group(1).strip().strip("'\",") if ip_m else "?"),
+            "line": m,
+        })
+
+    def parse_ts(ts):
+        try:
+            from datetime import datetime
+            return datetime.strptime(ts[:26].ljust(26, "0"), "%Y-%m-%dT%H:%M:%S.%f")
+        except Exception:
+            return None
+
+    pairs = []
+    for i in range(len(events)):
+        for j in range(i + 1, len(events)):
+            a, b = events[i], events[j]
+            if a["pid"] == b["pid"] and a["pid"] != "?":
+                continue
+            ta, tb = parse_ts(a["ts"]), parse_ts(b["ts"])
+            if ta is None or tb is None:
+                continue
+            delta = abs((tb - ta).total_seconds() * 1000.0)
+            if delta < 500:
+                pairs.append((delta, a, b))
+
+    fp_miss = [m for _, m in rows if re.search(r"fingerprint mismatch|PreconditionFailed|Invalid fingerprint", m, re.I)]
+    print("")
+    print(f"  observation: assign_ip lines={len(events)}  near-concurrent different-PID pairs(<500ms)={len(pairs)}  fingerprint-mismatch lines={len(fp_miss)}")
+    for delta, a, b in pairs[:5]:
+        print(f"    Δ={delta:.0f}ms  P{a['pid']} ip={a['ip']}  ||  P{b['pid']} ip={b['ip']}")
+    for m in fp_miss[:5]:
+        print(f"    mismatch: {m[:200]}")
+    print("  (Interpretation left to cloud_cli / VMS owners — see gcp/docs/voc-gcp-alias-attach-forensics.md)")
+PY
+  fi
 else
   echo ""
   echo "[5] Cloud Audit Logs skipped (--no-logs)"
+  echo ""
+  echo "[5b] cloud_cli logs skipped (--no-logs)"
 fi
 
 # -------------------------------------------------------------------------
