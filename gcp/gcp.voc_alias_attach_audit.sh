@@ -194,24 +194,42 @@ fi
 
 # -------------------------------------------------------------------------
 # 3) Diff: reserved addrs not present as primary/alias on any VM
+#    3b) Explicit DNS VIP check (often reserved, never attached / never published)
 # -------------------------------------------------------------------------
 echo ""
 echo "[3] Reservation ↔ NIC alias gaps"
 echo "------------------------------------------------------------------------"
 
+AUDIT_RC_FILE="$(mktemp)"
+OPS_TMP="$(mktemp)"
+echo 0 > "$AUDIT_RC_FILE"
+echo '[]' > "$OPS_TMP"
+# shellcheck disable=SC2064
+trap 'rm -f "$OPS_TMP" "$AUDIT_RC_FILE"' EXIT
+
 export VOC_ADDR_JSON="$ADDR_JSON"
 export VOC_INST_JSON="$INST_JSON"
 export VOC_CLUSTER="$CLUSTER_NAME"
+export VOC_PROJECT="$PROJECT_ID"
+export VOC_AUDIT_RC_FILE="$AUDIT_RC_FILE"
+
 python3 <<'PY'
 import json, os
 
 addrs = json.loads(os.environ["VOC_ADDR_JSON"])
 insts = json.loads(os.environ["VOC_INST_JSON"])
+cluster = os.environ.get("VOC_CLUSTER", "")
+project = os.environ.get("VOC_PROJECT", "PROJECT")
+rc_file = os.environ["VOC_AUDIT_RC_FILE"]
+exit_rc = 0
 
 vm_ips = set()
 vm_alias_ips = set()
+vms = []
 for i in insts:
+    zone = (i.get("zone") or "").split("/")[-1]
     for nic in i.get("networkInterfaces") or []:
+        aliases = set()
         if nic.get("networkIP"):
             vm_ips.add(nic["networkIP"])
         for ar in nic.get("aliasIpRanges") or []:
@@ -220,6 +238,14 @@ for i in insts:
             if ip:
                 vm_alias_ips.add(ip)
                 vm_ips.add(ip)
+                aliases.add(ip)
+        vms.append({
+            "name": i.get("name"),
+            "zone": zone,
+            "primary": nic.get("networkIP"),
+            "aliases": aliases,
+            "nic": nic.get("name") or "nic0",
+        })
 
 missing = []
 attached_ok = 0
@@ -237,7 +263,8 @@ print(f"  addresses={len(addrs)}  on_nic={attached_ok}  MISSING_FROM_NIC={len(mi
 if missing:
     print("  *** GAPS (reserved/in-use IP not on any cluster VM primary or alias):")
     for ip, status, name, users in missing:
-        print(f"      [GAP] {ip:15} {status:8} {name}  users={users or '-'}")
+        tag = "DNS-VIP" if str(name).endswith("-dns-vip") else "GAP"
+        print(f"      [{tag}] {ip:15} {status:8} {name}  users={users or '-'}")
 else:
     print("  [PASS] All cluster addresses appear on a VM primary or alias")
 
@@ -247,6 +274,53 @@ if orphan_aliases:
     print("  aliases present without a matching cluster address reservation:")
     for ip in orphan_aliases:
         print(f"      [INFO] {ip}")
+
+# --- Explicit DNS VIP ---
+print("")
+print("[3b] DNS VIP (explicit)")
+print("-" * 72)
+dns_name = f"{cluster}-dns-vip"
+dns = next((a for a in addrs if (a.get("name") or "") == dns_name), None)
+if dns is None:
+    dns = next((a for a in addrs if (a.get("name") or "").endswith("-dns-vip")), None)
+
+if dns is None:
+    print(f"  [FAIL] No address named '{dns_name}' found")
+    print("         TF normally reserves this; install often never attaches it.")
+    exit_rc = 2
+else:
+    ip = dns.get("address")
+    status = dns.get("status")
+    name = dns.get("name")
+    users = [u.split("/")[-1] for u in (dns.get("users") or [])]
+    holders = [v for v in vms if ip in v["aliases"] or v["primary"] == ip]
+    print(f"  name:    {name}")
+    print(f"  address: {ip}")
+    print(f"  status:  {status}")
+    print(f"  users:   {users or '-'}")
+    if holders:
+        for v in holders:
+            where = "ALIAS" if ip in v["aliases"] else "PRIMARY"
+            print(f"  [PASS] Attached as {where} on {v['name']} ({v['zone']})")
+    else:
+        exit_rc = 2
+        print("  [FAIL] Reserved but NOT attached to any cluster VM NIC/alias")
+        print("         IP is allocated in GCP but never published to the operator / NIC.")
+        target = next((v for v in vms if "enode" in (v["name"] or "")), None)
+        if target is None and vms:
+            target = vms[0]
+        if target:
+            existing = sorted(target["aliases"])
+            new_aliases = existing + ([ip] if ip not in existing else [])
+            alias_arg = ";".join(f"{a}/32" for a in new_aliases)
+            print("  Remediation (ONE update; include existing aliases — replace-all):")
+            print(f"    gcloud compute instances network-interfaces update {target['name']} \\")
+            print(f"      --zone={target['zone']} --project={project} \\")
+            print(f"      --network-interface={target['nic']} \\")
+            print(f"      --aliases='{alias_arg}'")
+
+with open(rc_file, "w") as f:
+    f.write(str(exit_rc))
 PY
 
 # -------------------------------------------------------------------------
@@ -255,10 +329,6 @@ PY
 echo ""
 echo "[4] Zone ops: updateNetworkInterface for ${CLUSTER_NAME} (since ${SINCE_OPS})"
 echo "------------------------------------------------------------------------"
-
-OPS_TMP="$(mktemp)"
-echo '[]' > "$OPS_TMP"
-trap 'rm -f "$OPS_TMP"' EXIT
 
 if [[ -n "$ZONE" ]]; then
   ZONE_LIST="$ZONE"
@@ -390,5 +460,14 @@ echo "  gcloud compute instances network-interfaces update <ENODE_VM> \\"
 echo "    --zone=<ZONE> --project=${PROJECT_ID} --network-interface=nic0 \\"
 echo "    --aliases='A.B.C.D/32;E.F.G.H/32;...'"
 echo ""
+echo "  # DNS VIP: see [3b] above for the reserved address and a ready-to-run attach command."
 echo "  Do NOT fan out one-VIP-per-RPC in parallel (causes Invalid fingerprint)."
 echo "========================================================================"
+
+DNS_RC="$(cat "$AUDIT_RC_FILE" 2>/dev/null || echo 0)"
+if [[ "$DNS_RC" != "0" ]]; then
+  echo "RESULT: DNS VIP check FAILED (exit ${DNS_RC})"
+  exit "$DNS_RC"
+fi
+echo "RESULT: DNS VIP check PASS"
+exit 0

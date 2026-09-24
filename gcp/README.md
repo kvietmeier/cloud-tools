@@ -77,7 +77,7 @@ gcloud config get-value account
 
 ### VoC alias-attach audit (cluster name is required)
 
-Use when a cluster has reserved VIPs but eNodes are missing aliases (often `Invalid fingerprint` from concurrent NIC updates).
+Use when a cluster has reserved VIPs but eNodes are missing aliases (often `Invalid fingerprint` from concurrent NIC updates). Also prints an **explicit DNS VIP** check: TF reserves `*-dns-vip` but install often never attaches it — the script surfaces the address and exits **2** if it is missing/unattached.
 
 ```bash
 cd gcp
