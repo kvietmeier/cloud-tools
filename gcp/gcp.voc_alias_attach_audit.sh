@@ -212,17 +212,20 @@ echo "[3] Reservation ↔ NIC alias gaps"
 echo "------------------------------------------------------------------------"
 
 AUDIT_RC_FILE="$(mktemp)"
+AUDIT_DETAIL_FILE="$(mktemp)"
 OPS_TMP="$(mktemp)"
 echo 0 > "$AUDIT_RC_FILE"
+: > "$AUDIT_DETAIL_FILE"
 echo '[]' > "$OPS_TMP"
 # shellcheck disable=SC2064
-trap 'rm -f "$OPS_TMP" "$AUDIT_RC_FILE"' EXIT
+trap 'rm -f "$OPS_TMP" "$AUDIT_RC_FILE" "$AUDIT_DETAIL_FILE"' EXIT
 
 export VOC_ADDR_JSON="$ADDR_JSON"
 export VOC_INST_JSON="$INST_JSON"
 export VOC_CLUSTER="$CLUSTER_NAME"
 export VOC_PROJECT="$PROJECT_ID"
 export VOC_AUDIT_RC_FILE="$AUDIT_RC_FILE"
+export VOC_AUDIT_DETAIL_FILE="$AUDIT_DETAIL_FILE"
 
 python3 <<'PY'
 import json, os
@@ -232,8 +235,14 @@ insts = json.loads(os.environ["VOC_INST_JSON"])
 cluster = os.environ.get("VOC_CLUSTER", "")
 project = os.environ.get("VOC_PROJECT", "PROJECT")
 rc_file = os.environ["VOC_AUDIT_RC_FILE"]
+detail_file = os.environ.get("VOC_AUDIT_DETAIL_FILE", "")
 exit_rc = 0
 # 0=ok, 2=live cluster VIP/alias gaps, 3=orphaned reservations (no live VMs)
+detail_lines = []
+
+def emit(line=""):
+    print(line)
+    detail_lines.append(line)
 
 vm_ips = set()
 vm_alias_ips = set()
@@ -284,14 +293,14 @@ if vms and not live:
 
 if torn_down_leak:
     exit_rc = 3
-    print(f"  [ORPHAN] No VMs for '{cluster}' but {len(orphans)} RESERVED address(es) remain")
-    print("           Cluster looks deleted; teardown left VIP/node IP reservations.")
-    print("           This is NOT a DNS-VIP attach failure on a live cluster.")
-    print("")
-    print("  Orphaned reservations:")
+    emit(f"  [FAIL] No live VMs for '{cluster}' but {len(orphans)} RESERVED address(es) remain")
+    emit("         Cluster looks deleted; teardown left VIP/node IP reservations.")
+    emit("         This is NOT a DNS-VIP attach failure on a live cluster.")
+    emit("")
+    emit("  Orphaned reservations:")
     for a in sorted(orphans, key=lambda x: x.get("address") or ""):
-        print(f"      [ORPHAN] {a.get('address'):15} {a.get('name')}")
-    print("")
+        emit(f"      [ORPHAN] {a.get('address'):15} {a.get('name')}")
+    emit("")
     # Guess region from first address
     region = "REGION"
     if orphans:
@@ -301,11 +310,11 @@ if torn_down_leak:
         elif orphans[0].get("subnetwork"):
             # fallback hint
             region = "us-central1"
-    print("  Cleanup (review first):")
-    print(f"    gcloud compute addresses list --project={project} --filter='name~^{cluster}' \\")
-    print("      --format='value(name,region.basename(),status)'")
-    print(f"    # then for each RESERVED name:")
-    print(f"    # gcloud compute addresses delete NAME --region={region} --project={project} --quiet")
+    emit("  Cleanup (review first):")
+    emit(f"    gcloud compute addresses list --project={project} --filter='name~^{cluster}' \\")
+    emit("      --format='value(name,region.basename(),status)'")
+    emit(f"    # then for each RESERVED name:")
+    emit(f"    # gcloud compute addresses delete NAME --region={region} --project={project} --quiet")
 else:
     missing = []
     attached_ok = 0
@@ -325,30 +334,33 @@ else:
     print(f"  addresses={len(addrs)}  on_nic={attached_ok}  MISSING_FROM_NIC={len(missing)}  dns_vip_pending={len(dns_pending)}")
     if missing:
         exit_rc = 2
-        print("  *** GAPS (reserved/in-use IP not on any cluster VM primary or alias):")
+        emit(f"  [FAIL] {len(missing)} reserved VIP/internal IP(s) NOT on any cluster VM NIC/alias")
+        emit("         IPs are allocated in GCP (RESERVED) but never published to the eNode.")
+        emit("         Typical cause: incomplete/raced updateNetworkInterface (partial alias set).")
+        emit("")
+        emit("  Missing addresses:")
         for ip, status, name, users in missing:
-            print(f"      [GAP] {ip:15} {status:8} {name}  users={users or '-'}")
-        # Prefer an eNode for alias attach remediation
+            emit(f"      [GAP] {ip:15} {status:8} {name}  users={users or '-'}")
         target = next((v for v in live_vms if "enode" in (v["name"] or "")), None)
         if target is None and live_vms:
             target = live_vms[0]
         if target:
             existing = sorted(target["aliases"])
             gap_ips = [ip for ip, _, _, _ in missing if ip]
-            # Keep existing aliases; add missing VIPs (replace-all semantics)
             new_aliases = existing[:]
             for ip in gap_ips:
                 if ip not in new_aliases:
                     new_aliases.append(ip)
             alias_arg = ";".join(f"{a}/32" for a in new_aliases)
-            print("")
-            print("  Remediation hint (ONE update; include ALL aliases — replace-all):")
-            print(f"    gcloud compute instances network-interfaces update {target['name']} \\")
-            print(f"      --zone={target['zone']} --project={project} \\")
-            print(f"      --network-interface={target['nic']} \\")
-            print(f"      --aliases='{alias_arg}'")
-            print("    # Review first: only eNode should hold mgmt/internal VIP aliases;")
-            print("    # do NOT fan out one-VIP-per-RPC in parallel (Invalid fingerprint).")
+            emit("")
+            emit(f"  Target eNode: {target['name']}  zone={target['zone']}  nic={target['nic']}")
+            emit(f"  Current aliases on NIC: {';'.join(existing) if existing else '(none)'}")
+            emit("  Remediation (ONE update; include ALL aliases — replace-all):")
+            emit(f"    gcloud compute instances network-interfaces update {target['name']} \\")
+            emit(f"      --zone={target['zone']} --project={project} \\")
+            emit(f"      --network-interface={target['nic']} \\")
+            emit(f"      --aliases='{alias_arg}'")
+            emit("    # Do NOT fan out one-VIP-per-RPC in parallel (Invalid fingerprint).")
     elif addrs and not dns_pending:
         print("  [PASS] All cluster addresses appear on a VM primary or alias")
     elif addrs and not missing:
@@ -366,7 +378,10 @@ else:
         print("  aliases present without a matching cluster address reservation:")
         for ip in orphan_aliases:
             print(f"      [INFO] {ip}  (on NIC but no <cluster>-* address reservation)")
-
+            if exit_rc == 2:
+                detail_lines.append(
+                    f"      [INFO] {ip}  (on NIC but no <cluster>-* address reservation)"
+                )
 # --- Explicit DNS VIP ---
 # Polaris: often absent, or reserved and left unattached until DNS service is
 # enabled on the cluster. Neither is an audit failure.
@@ -416,6 +431,9 @@ else:
 
 with open(rc_file, "w") as f:
     f.write(str(exit_rc))
+if detail_file and detail_lines:
+    with open(detail_file, "w") as f:
+        f.write("\n".join(detail_lines) + "\n")
 PY
 
 # -------------------------------------------------------------------------
@@ -550,9 +568,10 @@ echo "------------------------------------------------------------------------"
 AUDIT_RC="$(cat "$AUDIT_RC_FILE" 2>/dev/null || echo 0)"
 case "$AUDIT_RC" in
   2)
-    echo "  Live cluster: reserved VIP/internal IPs missing from NIC aliases (see [3] GAP)."
-    echo "  DNS VIP reserved-unattached is OK; other RESERVED gaps are NOT."
-    echo "  Use the ONE network-interfaces update under [3] (replace-all aliases)."
+    if [[ -s "$AUDIT_DETAIL_FILE" ]]; then
+      cat "$AUDIT_DETAIL_FILE"
+      echo ""
+    fi
     echo "  Do NOT attach one VIP per parallel RPC (Invalid fingerprint)."
     echo ""
     echo "  Inspect:"
@@ -564,12 +583,10 @@ case "$AUDIT_RC" in
     exit 2
     ;;
   3)
-    echo "  Cluster VMs are gone; RESERVED addresses are leaked (see [3] ORPHAN list)."
-    echo "  Release them after review:"
-    echo "    gcloud compute addresses list --project=${PROJECT_ID} \\"
-    echo "      --filter='name~^${CLUSTER_NAME} AND status=RESERVED' \\"
-    echo "      --format='table(name,address,status,region.basename())'"
-    echo "    # gcloud compute addresses delete NAME --region=REGION --project=${PROJECT_ID} --quiet"
+    if [[ -s "$AUDIT_DETAIL_FILE" ]]; then
+      cat "$AUDIT_DETAIL_FILE"
+      echo ""
+    fi
     echo "========================================================================"
     echo "RESULT: ORPHANED reservations (cluster gone, IPs leaked) (exit 3)"
     exit 3
