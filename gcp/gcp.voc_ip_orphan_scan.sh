@@ -8,13 +8,13 @@
 #     (or flag them as orphaned after cluster teardown).
 #
 # DESCRIPTION
-#     1. Lists INTERNAL addresses (default: purpose=GCE_ENDPOINT — VoC VIP style)
+#     1. Lists INTERNAL addresses (default: purpose=GCE_ENDPOINT: VoC VIP style)
 #     2. Groups them by cluster prefix (strips -mgmt-vip, -internal-NNNNN, etc.)
 #     3. Lists voc-internal instances once and maps them to those prefixes
 #     4. Verdict per cluster:
-#          ORPHAN  — RESERVED addrs remain, no RUNNING/STAGING voc-internal VMs
-#          LIVE    — at least one live voc-internal VM for the prefix
-#          EMPTY   — no addrs and no VMs (should not appear)
+#          ORPHAN : RESERVED addrs remain, no RUNNING/STAGING voc-internal VMs
+#          LIVE   : at least one live voc-internal VM for the prefix
+#          EMPTY  : no addrs and no VMs (should not appear)
 #
 #     Use when a project has dozens of RESERVED/IN_USE GCE_ENDPOINT rows and
 #     you need to know which clusters are gone vs still running.
@@ -259,7 +259,7 @@ for key in sorted(by_cluster.keys()):
         verdict = "ORPHAN"
         orphan_clusters.append(key)
     elif n_live == 0 and e["in_use"] > 0:
-        # IN_USE but no voc-internal VM — users may point at deleted/non-VAST
+        # IN_USE but no voc-internal VM: users may point at deleted/non-VAST
         verdict = "STALE?"
         weird.append(key)
     elif n_live > 0:

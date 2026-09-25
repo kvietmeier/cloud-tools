@@ -6,10 +6,10 @@ Auth and shell aliases live in `system-tools`. Runnable multi-step cloud jobs li
 
 ## Prerequisites
 
-* **gcloud** — Google Cloud SDK, authenticated (`gcloud auth login`) with an active project (`gcloud config set project <id>`)
-* **jq** — JSON processing (`brew install jq` on macOS)
-* **python3** — required by `gcp.voc_alias_attach_audit.sh` / `gcp.voc_ip_orphan_scan.sh`
-* **curl** — required by `gcp_check_perms.sh` / validator IAM checks
+* **gcloud** :  Google Cloud SDK, authenticated (`gcloud auth login`) with an active project (`gcloud config set project <id>`)
+* **jq** :  JSON processing (`brew install jq` on macOS)
+* **python3** :  required by `gcp.voc_alias_attach_audit.sh` / `gcp.voc_ip_orphan_scan.sh`
+* **curl** :  required by `gcp_check_perms.sh` / validator IAM checks
 * Bash 4+ recommended for `gcp_validate_project.sh` (macOS system Bash is 3.2; use Homebrew Bash if needed)
 
 ## Layout
@@ -107,7 +107,7 @@ chmod +x gcp.voc_alias_attach_audit.sh   # once
 | `--no-logs` | Skip `gcloud logging read` |
 | `--json-dir DIR` | Dump raw JSON (addresses, instances, ops, audit) |
 
-Manual fix pattern (full alias set in **one** update — do not parallelize per-VIP):
+Manual fix pattern (full alias set in **one** update :  do not parallelize per-VIP):
 
 ```bash
 gcloud compute instances network-interfaces update <ENODE_VM> \
@@ -193,13 +193,13 @@ Edit project/VPC/ASN/APIPA values inside the scripts under `vpn/`, then:
 
 ```bash
 ./vpn/vpn_checkazure_setup.sh
-# create / rebuild scripts are destructive — review vars carefully first
+# create / rebuild scripts are destructive :  review vars carefully first
 ```
 
 ---
 
 ## Notes
 
-* `vast_ports.txt` — reference port list used by firewall audits.
+* `vast_ports.txt` :  reference port list used by firewall audits.
 * Sample audit output may appear as `vast_gcp_audit_*.txt`; those are run artifacts, not inputs.
 * Prefer `gcp_validate_project.sh` over anything under `archive/`.

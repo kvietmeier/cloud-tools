@@ -17,7 +17,7 @@
 #       5. Optionally reads Cloud Audit Logs for alias attach payloads
 #
 #     Typical failure mode: installer SA fires concurrent NIC updates with
-#     partial alias lists + stale fingerprint → Invalid fingerprint /
+#     partial alias lists + stale fingerprint -> Invalid fingerprint /
 #     missing aliases even though addresses are RESERVED.
 #
 # NOTES
@@ -185,7 +185,7 @@ if [[ "$INST_COUNT" -eq 0 ]]; then
     --format=json 2>/dev/null || echo '[]')"
   SOFT_COUNT="$(echo "$SOFT_JSON" | jq 'length')"
   if [[ "$SOFT_COUNT" -gt 0 ]]; then
-    echo "  [INFO] ${SOFT_COUNT} name/label match(es) lack tag voc-internal — not treated as VAST cluster nodes"
+    echo "  [INFO] ${SOFT_COUNT} name/label match(es) lack tag voc-internal: not treated as VAST cluster nodes"
   fi
 else
   echo "$INST_JSON" | jq -r '
@@ -212,7 +212,7 @@ fi
 #    3b) Explicit DNS VIP check (often reserved, never attached / never published)
 # -------------------------------------------------------------------------
 echo ""
-echo "[3] Reservation ↔ NIC alias gaps"
+echo "[3] Reservation <-> NIC alias gaps"
 echo "------------------------------------------------------------------------"
 
 AUDIT_RC_FILE="$(mktemp)"
@@ -255,7 +255,7 @@ def emit(line=""):
     detail_lines.append(line)
 
 def remediate(line=""):
-    """Commands / cleanup — printed only in [6]."""
+    """Commands / cleanup: printed only in [6]."""
     remediate_lines.append(line)
 
 vm_ips = set()
@@ -299,7 +299,7 @@ torn_down_leak = (not live) and bool(orphans)
 
 if vms and not live:
     stopping = sorted({v["name"] for v in vms if v["status"] not in LIVE_STATUSES})
-    print(f"  [INFO] {len(vms)} voc-internal VM(s) but none RUNNING/STAGING — treat as not live")
+    print(f"  [INFO] {len(vms)} voc-internal VM(s) but none RUNNING/STAGING: treat as not live")
     for n in stopping:
         st = next(v["status"] for v in vms if v["name"] == n)
         print(f"           {n}  status={st}")
@@ -366,7 +366,7 @@ else:
             emit("")
             emit(f"  Target eNode: {target['name']}  zone={target['zone']}  nic={target['nic']}")
             emit(f"  Current aliases on NIC: {';'.join(existing) if existing else '(none)'}")
-            remediate("  Remediation (ONE update; include ALL aliases — replace-all):")
+            remediate("  Remediation (ONE update; include ALL aliases; replace-all):")
             remediate(f"    gcloud compute instances network-interfaces update {target['name']} \\")
             remediate(f"      --zone={target['zone']} --project={project} \\")
             remediate(f"      --network-interface={target['nic']} \\")
@@ -377,7 +377,7 @@ else:
     elif addrs and not missing:
         print("  [PASS] Non-DNS addresses on NICs; DNS VIP pending is expected (see [3b])")
     else:
-        print("  [INFO] No addresses and no instances — nothing to audit")
+        print("  [INFO] No addresses and no instances: nothing to audit")
 
     if dns_pending:
         for ip, status, name in dns_pending:
@@ -409,14 +409,14 @@ if torn_down_leak:
         print(f"  name:    {dns.get('name')}")
         print(f"  address: {dns.get('address')}")
         print(f"  status:  {dns.get('status')} (orphaned with cluster)")
-        print("  [SKIP] DNS VIP lifecycle check — no live VMs (see ORPHAN above)")
+        print("  [SKIP] DNS VIP lifecycle check: no live VMs (see ORPHAN above)")
     else:
         print(f"  [SKIP] No '{dns_name}' among orphans")
         print("         Primary issue is leaked RESERVED addresses, not DNS.")
 elif not live and not addrs:
     print("  [SKIP] No cluster resources found")
 elif not live:
-    print("  [SKIP] No live VMs — DNS VIP check not applicable")
+    print("  [SKIP] No live VMs: DNS VIP check not applicable")
 elif dns is None:
     print(f"  [OK] No address named '{dns_name}'")
     print("       Some Polaris deploys omit dns-vip until/unless DNS is used.")
@@ -528,7 +528,7 @@ if errs:
 elif op.get('statusMessage'):
     print('  statusMessage: {}'.format(op.get('statusMessage')))
 else:
-    print('  (no error.errors[] on operation — check audit logs in [5])')
+    print('  (no error.errors[] on operation; check audit logs in [5])')
 "
   done
 fi
@@ -563,7 +563,7 @@ import json, os
 
 logs = json.loads(os.environ["VOC_LOG_JSON"])
 addrs = json.loads(os.environ.get("VOC_ADDR_JSON") or "[]")
-# Expected VIP/internal IPs (exclude dns-vip — attach is optional)
+# Expected VIP/internal IPs (exclude dns-vip; attach is optional)
 expected = set()
 for a in addrs:
     name = a.get("name") or ""
@@ -572,7 +572,7 @@ for a in addrs:
         continue
     if name.endswith("-dns-vip"):
         continue
-    # node primaries are IN_USE as users on instances — still expect aliases for *-vip / *-internal-*
+    # node primaries are IN_USE as users on instances; still expect aliases for *-vip / *-internal-*
     if ("-vip" in name) or ("-internal-" in name):
         expected.add(ip)
 
@@ -707,7 +707,7 @@ if len(events) >= 1:
         if not ev["code"]:
             prev_ips = set(ev["ips"])
 
-    # Near-concurrent pairs (< 500ms) → fingerprint race signature
+    # Near-concurrent pairs (< 500ms) -> fingerprint race signature
     def parse_ts(ts):
         # 2026-09-24T23:34:10.739783Z
         try:
@@ -740,24 +740,24 @@ if len(events) >= 1:
         if len(sizes) >= 3 and all(sizes[i] <= sizes[i + 1] for i in range(len(sizes) - 1)) and sizes[-1] > sizes[0]:
             print("")
             print("  PATTERN: serial incremental alias growth (n={})".format(
-                " → ".join(str(s) for s in sizes)
+                " -> ".join(str(s) for s in sizes)
             ))
-            print("  (each successful PATCH carries a growing/partial set — see forensics doc)")
+            print("  (each successful PATCH carries a growing/partial set; see forensics doc)")
 PY
   else
-    echo "  (no audit entries — check Logging API perms or widen --since)"
+    echo "  (no audit entries; check Logging API perms or widen --since)"
   fi
 
   # -----------------------------------------------------------------------
-  # 5b) On-node cloud_cli logs (ops-agent → Cloud Logging)
-  #     Evidence only — assign_ip / fingerprint lines if present
+  # 5b) On-node cloud_cli logs (ops-agent -> Cloud Logging)
+  #     Evidence only: assign_ip / fingerprint lines if present
   # -----------------------------------------------------------------------
   echo ""
   echo "[5b] cloud_cli logs (ops-agent logName=cloud-cli, since ${SINCE_LOGS})"
   echo "------------------------------------------------------------------------"
   CLUSTER_ID="$(echo "$INST_JSON" | jq -r '[.[] | .labels.cluster_id // empty] | first // empty')"
   if [[ -z "$CLUSTER_ID" ]]; then
-    echo "  [SKIP] No labels.cluster_id on matched instances — cannot filter cloud_cli by cluster"
+    echo "  [SKIP] No labels.cluster_id on matched instances: cannot filter cloud_cli by cluster"
   else
     echo "  cluster_id=${CLUSTER_ID}"
     echo "  COMMAND: gcloud logging read \\"
@@ -811,7 +811,7 @@ for e in logs:
 rows.sort(key=lambda x: x[0])
 print(f"  cloud_cli entries scanned={len(logs)}  attach-related lines={len(rows)}")
 if not rows:
-    print("  (no assign_ip / fingerprint lines in window — widen --since or check ops-agent)")
+    print("  (no assign_ip / fingerprint lines in window; widen --since or check ops-agent)")
 else:
     print(f"  {'TIMESTAMP(UTC)':<28} cloud_cli")
     print("  " + "-" * 100)
@@ -863,7 +863,7 @@ else:
         print(f"    Δ={delta:.0f}ms  P{a['pid']} ip={a['ip']}  ||  P{b['pid']} ip={b['ip']}")
     for m in fp_miss[:5]:
         print(f"    mismatch: {m[:200]}")
-    print("  (Interpretation left to cloud_cli / VMS owners — see")
+    print("  (Interpretation left to cloud_cli / VMS owners; see")
     print("   vastcloud/VastCloud-GCP-VIP-Alias-Attach-Forensics.md in sre-runbooks)")
 PY
   fi
@@ -875,7 +875,7 @@ else
 fi
 
 # -------------------------------------------------------------------------
-# 6) Remediation — commands only here (not mixed into [3]/[5])
+# 6) Remediation: commands only here (not mixed into [3]/[5])
 # -------------------------------------------------------------------------
 echo ""
 echo "[6] Remediation"
