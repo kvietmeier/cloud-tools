@@ -1,2 +1,5 @@
 # Local / sensitive overrides — do not publish
 aws/cato-local.conf
+
+# local VoC log captures
+gcp/logs/
