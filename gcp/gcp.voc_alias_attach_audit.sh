@@ -25,7 +25,7 @@
 #     Author: Karl Vietmeier
 #
 #     Canonical home: git.vastdata.com:karlv/sre-runbooks (vastcloud/scripts/).
-#     Forensics write-up (private): vastcloud/VastCloud-GCP-VIP-Alias-Attach-Forensics.md
+#     Forensics write-up (private): vastcloud/VICE-1921/VastCloud-GCP-VIP-Alias-Attach-Forensics.md
 #     A copy of this script may also live in the public cloud-tools repo for convenience.
 #
 # USAGE
@@ -864,7 +864,7 @@ else:
     for m in fp_miss[:5]:
         print(f"    mismatch: {m[:200]}")
     print("  (Interpretation left to cloud_cli / VMS owners; see")
-    print("   vastcloud/VastCloud-GCP-VIP-Alias-Attach-Forensics.md in sre-runbooks)")
+    print("   vastcloud/VICE-1921/VastCloud-GCP-VIP-Alias-Attach-Forensics.md in sre-runbooks)")
 PY
   fi
 else
