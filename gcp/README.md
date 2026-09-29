@@ -1,14 +1,15 @@
 # GCP Scripts
 
-Bash (and some PowerShell) utilities for **VAST on Cloud** GCP work: project readiness audits, VPC/IP inventory, VoC VIP/alias attach debugging, quotas, VPN helpers, and lab VM ops.
+Bash (and some PowerShell) utilities for **VAST on Cloud** GCP work: project readiness audits, VPC/IP inventory, quotas, VPN helpers, and lab VM ops.
 
 Auth and shell aliases live in `system-tools`. Runnable multi-step cloud jobs live here.
+
+VoC cluster troubleshooting (VIP/alias attach audit, orphan VIP scan, forensics) lives in the private `sre-runbooks` repo under `vastcloud/scripts/` — not in this public repo.
 
 ## Prerequisites
 
 * **gcloud** :  Google Cloud SDK, authenticated (`gcloud auth login`) with an active project (`gcloud config set project <id>`)
 * **jq** :  JSON processing (`brew install jq` on macOS)
-* **python3** :  required by `gcp.voc_alias_attach_audit.sh` / `gcp.voc_ip_orphan_scan.sh`
 * **curl** :  required by `gcp_check_perms.sh` / validator IAM checks
 * Bash 4+ recommended for `gcp_validate_project.sh` (macOS system Bash is 3.2; use Homebrew Bash if needed)
 
@@ -25,12 +26,10 @@ Auth and shell aliases live in `system-tools`. Runnable multi-step cloud jobs li
 
 ## Script inventory
 
-### VoC / networking diagnostics
+### Networking / inventory
 
 | Script | Purpose |
 |--------|---------|
-| `gcp.voc_alias_attach_audit.sh` | **Per-cluster** audit: reserved VIP/internal IPs vs eNode aliases, Compute ops, Cloud Audit Logs, optional **cloud_cli** ops-agent lines. Canonical copy + private forensics note live in internal `sre-runbooks` (`vastcloud/`). |
-| `gcp.voc_ip_orphan_scan.sh` | **Project-wide**: group `GCE_ENDPOINT` INTERNAL IPs by cluster prefix and mark **ORPHAN** (RESERVED, no live VMs) vs **LIVE** |
 | `gcp.list_priv_ips.sh` | Table of all reserved INTERNAL addresses in the current project |
 | `gcp_check_ports.sh` | Audit VPC firewall ingress for VAST protocol/fabric ports |
 | `gcp.setupnewvpc.sh` | Create multi-region custom VPC (subnets, Cloud NAT, PGA, baseline firewall) |
@@ -76,65 +75,6 @@ gcloud config get-value project
 gcloud config get-value account
 ```
 
-### VoC alias-attach audit (cluster name is required)
-
-Use when a cluster has reserved VIPs but eNodes are missing aliases. Common causes of the same end state: concurrent NIC updates (`Invalid fingerprint` / replace-all subsets), or (esp. single-node) a successful attach later wiped by MIG `REFRESH` back to a template with no aliases. Nodes are identified by network tag **`voc-internal`** (Polaris puts it on every cluster node) plus `labels.cluster_name` or name prefix. **DNS VIP:** absent or reserved-until-DNS-enabled is OK (`[3b]`). Exit **2** if other reserved VIP/internal IPs are missing from NICs on a live cluster (gaps + remediation at top of `[3]` / `[6]`). Exit **3** if no live (RUNNING/STAGING) nodes but `RESERVED` addresses remain (orphan leak).
-
-```bash
-cd gcp
-chmod +x gcp.voc_alias_attach_audit.sh   # once
-
-# CLUSTER_NAME is the first argument
-./gcp.voc_alias_attach_audit.sh seb-wmt-test
-
-./gcp.voc_alias_attach_audit.sh eiki-vko-gcp-1 \
-  -p vast-on-cloud \
-  -z europe-west1-c
-
-./gcp.voc_alias_attach_audit.sh some-ci-cluster \
-  --since 2026-09-20 \
-  --json-dir /tmp/voc-audit-some-ci-cluster
-
-# Faster: skip Cloud Audit Logs
-./gcp.voc_alias_attach_audit.sh seb-wmt-test --no-logs
-```
-
-| Flag | Meaning |
-|------|---------|
-| `-p, --project` | GCP project (default: active config) |
-| `-z, --zone` | Limit instances/ops to one zone |
-| `-s, --since` | Ops/logs since `YYYY-MM-DD` or RFC3339 (default: yesterday) |
-| `--no-logs` | Skip `gcloud logging read` |
-| `--json-dir DIR` | Dump raw JSON (addresses, instances, ops, audit) |
-
-Manual fix pattern (full alias set in **one** update :  do not parallelize per-VIP):
-
-```bash
-gcloud compute instances network-interfaces update <ENODE_VM> \
-  --zone=<ZONE> \
-  --network-interface=nic0 \
-  --aliases='10.x.x.x/32;10.x.x.y/32;...'
-```
-
-### Project-wide orphan VIP / IP scan
-
-When a project has a long list of `IN_USE` / `RESERVED` `GCE_ENDPOINT` addresses and you need to know which clusters are still up vs teardown leaks:
-
-```bash
-./gcp.voc_ip_orphan_scan.sh
-./gcp.voc_ip_orphan_scan.sh -p vast-on-cloud --orphans-only --delete-cmds
-```
-
-| Flag | Meaning |
-|------|---------|
-| `-p, --project` | GCP project (default: active config) |
-| `--all-internal` | All INTERNAL addresses (not only `purpose=GCE_ENDPOINT`) |
-| `--orphans-only` | Only print ORPHAN clusters |
-| `--delete-cmds` | Print commented `gcloud compute addresses delete` lines |
-| `--json-dir DIR` | Dump raw addresses / instances JSON |
-
-Exit **3** if any ORPHAN groups exist. For one cluster’s NIC/alias deep dive, use `gcp.voc_alias_attach_audit.sh`.
-
 ### List reserved internal IPs
 
 ```bash
@@ -157,7 +97,7 @@ Exit **3** if any ORPHAN groups exist. For one cluster’s NIC/alias deep dive, 
 ./gcp_check_quota.sh <PROJECT_ID>
 ```
 
-### New VoC-style VPC
+### New VPC (lab / VoC-style baseline)
 
 ```bash
 ./gcp.setupnewvpc.sh
@@ -203,3 +143,4 @@ Edit project/VPC/ASN/APIPA values inside the scripts under `vpn/`, then:
 * `vast_ports.txt` :  reference port list used by firewall audits.
 * Sample audit output may appear as `vast_gcp_audit_*.txt`; those are run artifacts, not inputs.
 * Prefer `gcp_validate_project.sh` over anything under `archive/`.
+* VoC VIP/alias attach and orphan-IP troubleshooting: private `sre-runbooks` → `vastcloud/scripts/`.
