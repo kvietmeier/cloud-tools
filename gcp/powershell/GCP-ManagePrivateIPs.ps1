@@ -1,7 +1,10 @@
+# Copyright 2026 Karl Vietmeier
+# Licensed under the Apache License, Version 2.0
+
 # region: Global Parameters (can be passed as arguments to functions)
-$global:projectId  = "clouddev-itdesk124"          # GCP Project ID
-$global:region     = "us-west2"                      # GCP Region
-$global:subnetName = "subnet-hub-us-west2-voc1"   # GCP Subnet Name
+$global:projectId  = "my-gcp-project"          # GCP Project ID
+$global:region     = "us-west2"                # GCP Region
+$global:subnetName = "subnet-lab-us-west2"     # GCP Subnet Name
 # endregion
 
 

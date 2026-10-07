@@ -1,18 +1,14 @@
 #!/usr/bin/env python3
 """
-==================================================
-Karl Vietmeier
-VAST Data
+Copyright 2026 Karl Vietmeier
+Licensed under the Apache License, Version 2.0
+
 GCP Quota Summary Script
 
 This script retrieves and displays all GCP quotas
 for a given project and region. It shows the metric,
 limit, current usage, remaining quota, and percentage
 used, sorted alphabetically by metric.
-
-License: Apache License 2.0
-Author: Karl Vietmeier
-==================================================
 """
 
 import subprocess

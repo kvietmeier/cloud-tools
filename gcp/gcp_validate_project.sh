@@ -1,8 +1,8 @@
 #!/bin/bash
+# Copyright 2026 Karl Vietmeier
+# Licensed under the Apache License, Version 2.0
 # ==============================================================================
 # GCP Master Validator (Combined & Modular)
-# Licensed under the Apache License, Version 2.0;
-# you may not use this file except in compliance with the License.
 # ==============================================================================
 # SUMMARY:
 #   This tool performs a comprehensive "ready-to-build" audit for 

@@ -1,5 +1,8 @@
+# Copyright 2026 Karl Vietmeier
+# Licensed under the Apache License, Version 2.0
+
 # region: Define your GCP project and region
-$projectId    = "clouddev-itdesk124"           # Name - not number
+$projectId    = "my-gcp-project"           # Name - not number
 $region       = "us-west2" # Replace with your desired region
 
 # The number of IPs that were originally reserved in the batch.

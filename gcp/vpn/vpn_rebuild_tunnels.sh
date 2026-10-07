@@ -1,3 +1,6 @@
+#!/bin/bash
+# Copyright 2026 Karl Vietmeier
+# Licensed under the Apache License, Version 2.0
 # Define Variables
 GCP_REGION="us-central1"
 TUNNEL_A="vpn-tunnel-azure-central1-if0"
@@ -7,7 +10,7 @@ PEER_A="azure-bgp-peer-if0"
 PEER_B="azure-bgp-peer-if1"
 EXTERNAL_GW_NAME="vpngw-azure"
 HA_VPN_GW_NAME="vpn-gateway-azure-central1"
-NEW_KEY='Q()dPJmvMHxca0(!n$Gc'
+NEW_KEY='REPLACE_WITH_SHARED_KEY'
 
 ### Policy File for Tunnel Configuration
 POLICY_FILE="./robust-policy.json"

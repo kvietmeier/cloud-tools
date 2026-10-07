@@ -1,3 +1,6 @@
+# Copyright 2026 Karl Vietmeier
+# Licensed under the Apache License, Version 2.0
+
 # Get Project ID from environment variable
 $ProjectID = $env:GOOGLE_PROJECT
 
@@ -7,8 +10,8 @@ if (-not $ProjectID) {
     exit 1
 }
 
-# Use OneDrive project path for output
-$OutputDir = "C:\Users\karlv\OneDrive - Vast Data\Projects\VastOnCloudLocal\GCP"
+# Output directory (edit for your machine)
+$OutputDir = Join-Path $env:USERPROFILE "Documents\GCP"
 $OutputCSV = Join-Path $OutputDir "GCP_Permissions_$ProjectID.csv"
 
 # Get active authenticated account

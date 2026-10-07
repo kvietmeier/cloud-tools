@@ -75,8 +75,8 @@ Set-Location $PSscriptroot
 
 # Use existing network resources: vNet, Subnet, NSG - set to your own
 $Region         = "westus3"
-$vNetName       = "vnet-coreinfrahub-karlv"
-$vNetRG         = "karlv-voctesting"
+$vNetName       = "vnet-lab"
+$vNetRG         = "lab-rg"
 $index          = "1"
 
 # Image Definitions
@@ -92,7 +92,7 @@ $SKU            = "3"
 $Version        = "latest"
 
 # VM Config Parameters 
-$ResourceGroup  = "karlv-voctesting"
+$ResourceGroup  = "lab-rg"
 $VMSize         = "Standard_E2bds_v5"   # E#bds is required for NVMe
 $DiskController = "NVMe"                # Choices - "SCSI" and "NVMe"
 $VMPrefix       = "nvme"

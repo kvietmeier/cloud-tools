@@ -1,7 +1,24 @@
 #!/bin/bash
+# Copyright 2026 Karl Vietmeier
+# Licensed under the Apache License, Version 2.0
 # ==============================================================================
-# VAST Data GCP Firewall Specialist (v4 - JSON Guard)
+# GCP Firewall Port Auditor
 # ==============================================================================
+# REQUIRED_PORTS entries are "port:proto:label". Edit this list for your
+# workload. Example extras (uncomment / append as needed):
+#   "4420:tcp:NVMe-oF"
+#   "2049:tcp:NFS"
+#   "445:tcp:SMB"
+#   "111:tcp:rpcbind"
+#   "20048:tcp:mountd"
+REQUIRED_PORTS=(
+    "22:tcp:SSH"
+    "80:tcp:HTTP"
+    "443:tcp:HTTPS"
+    "389:tcp:LDAP"
+    "636:tcp:LDAPS"
+    # Add more ports below, e.g. "PORT:tcp:LABEL" or "PORT:udp:LABEL"
+)
 
 PROJECT_ID=$1; VPC_NAME=$2; TARGET_RULE=$3
 [[ -z "$PROJECT_ID" ]] && read -p "Project ID: " PROJECT_ID
@@ -9,7 +26,7 @@ PROJECT_ID=$1; VPC_NAME=$2; TARGET_RULE=$3
 [[ -z "$TARGET_RULE" ]] && read -p "Rule Name (Blank for SCAN ALL): " TARGET_RULE
 
 echo "============================================================"
-echo " VAST Protocol & Fabric Auditor: $PROJECT_ID"
+echo " GCP Firewall Port Auditor: $PROJECT_ID"
 echo " VPC: $VPC_NAME | Mode: ${TARGET_RULE:-FULL VPC SCAN}"
 echo "============================================================"
 
@@ -48,35 +65,12 @@ check_port() {
     fi
 }
 
-# ---------------------------------------------------------
-# AUDIT START
-# ---------------------------------------------------------
-echo -e "\n[*] PHASE 1: Client & Management Connectivity"
+echo -e "\n[*] Required Ports (edit REQUIRED_PORTS to extend)"
 echo "------------------------------------------------------------"
-for p in "2049:tcp:NFS" "445:tcp:SMB" "4420:tcp:NVMe-oF" "443:tcp:HTTPS/Mgmt" "80:tcp:HTTP" "22:tcp:SSH" "389:tcp:LDAP" "636:tcp:Secure LDAP" "3268:tcp:LDAP Cat" "3269:tcp:LDAP Cat SSL"; do
-    IFS=":" read -r port proto lab <<< "$p"; check_port "$proto" "$port" "$lab"
-done
-
-echo -e "\n[*] PHASE 2: Internal Cluster Fabric (Node-to-Node)"
-echo "------------------------------------------------------------"
-echo "--- Control & Monitoring ---"
-for p in "5551:tcp:vms_monitor" "6000:tcp:Leader" "6001:tcp:Leader Alt" "8000:tcp:mcvms" "3128:tcp:Call Home Proxy" "5000:tcp:Docker Registry"; do
-    IFS=":" read -r port proto lab <<< "$p"; check_port "$proto" "$port" "$lab"
-done
-
-echo -e "\n--- Data Plane & Internal RPC ---"
-for p in "4000:tcp:Dnode Internal" "4100:tcp:Dnode Internal" "4200:tcp:Cnode Internal" "4201:tcp:Cnode Internal" "5200:tcp:Cnode Internal Data" "5201:tcp:Cnode Internal Data" "4520:tcp:SPDK Target" "7000:tcp:Dnode Internal" "7100:tcp:Dnode Internal"; do
-    IFS=":" read -r port proto lab <<< "$p"; check_port "$proto" "$port" "$lab"
-done
-
-echo -e "\n--- CAS & Silos (UDP/TCP) ---"
-for p in "4001:udp:Dnode Internal UDP" "4005:udp:Dnode1 Platform CAS" "4105:udp:Dnode1 Data CAS" "4205:udp:CAS Operations" "6005:udp:Leader CAS" "5205:udp:Cnode Silo Start" "5239:udp:Cnode Silo End"; do
-    IFS=":" read -r port proto lab <<< "$p"; check_port "$proto" "$port" "$lab"
-done
-
-echo -e "\n--- Support & RPC Services ---"
-for p in "111:tcp:rpcbind" "20048:tcp:mount" "20106:tcp:NSM/Status" "20107:tcp:NLM/nlockmgr" "20108:tcp:NFS_RQUOTA" "9090:tcp:Tabular" "9092:tcp:Kafka"; do
-    IFS=":" read -r port proto lab <<< "$p"; check_port "$proto" "$port" "$lab"
+for p in "${REQUIRED_PORTS[@]}"; do
+    [[ -z "$p" || "$p" =~ ^[[:space:]]*# ]] && continue
+    IFS=":" read -r port proto lab <<< "$p"
+    check_port "$proto" "$port" "$lab"
 done
 
 echo -e "\n============================================================"

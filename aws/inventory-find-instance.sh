@@ -3,13 +3,13 @@
 # Script: capacity_sweep.sh
 # Description: Automated capacity probe for AWS EC2 On-Demand Capacity Reservations (ODCR).
 #              Loops through a predefined list of Availability Zones to secure constrained 
-#              resources (e.g., i3en.24xlarge) for VAST cluster deployments.
+#              resources (e.g., i3en.24xlarge) for cluster deployments.
 #              Defaults to immediate cancellation to verify hardware availability 
 #              without incurring On-Demand compute billing.
 #
 # Usage: ./capacity_sweep.sh <instance-count> <zones-file-path> [delay-in-seconds] [auto-cancel: y/n]
 #
-# Copyright 2026
+# Copyright 2026 Karl Vietmeier
 # Licensed under the Apache License, Version 2.0
 # ==============================================================================
 

@@ -29,10 +29,10 @@ Auth and shell aliases live in `system-tools`. Runnable multi-step cloud jobs li
 | Script | Purpose |
 |--------|---------|
 | `gcp.list_priv_ips.sh` | Table of all reserved INTERNAL addresses in the current project |
-| `gcp_check_ports.sh` | Audit VPC firewall ingress for VAST protocol/fabric ports |
+| `gcp_check_ports.sh` | Audit VPC firewall ingress for required ports |
 | `gcp.setupnewvpc.sh` | Create multi-region custom VPC (subnets, Cloud NAT, PGA, baseline firewall) |
 
-### Project readiness (VAST on Cloud)
+### Project readiness
 
 | Script | Purpose |
 |--------|---------|
@@ -88,7 +88,7 @@ gcloud config get-value account
 ./gcp_check_quota.sh <PROJECT_ID>
 ```
 
-### New VPC (lab / VoC-style baseline)
+### New VPC (lab baseline)
 
 ```bash
 ./gcp.setupnewvpc.sh

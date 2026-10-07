@@ -1,3 +1,7 @@
+#!/usr/bin/env python3
+# Copyright 2026 Karl Vietmeier
+# Licensed under the Apache License, Version 2.0
+
 import sys
 import os
 
@@ -10,7 +14,7 @@ except ImportError:
     print("\n[FAIL] SDK Libraries missing. Run: pip install google-cloud-resource-manager google-cloud-compute")
     sys.exit(1)
 
-# --- [2/4] THE FULL VAST DATASET ---
+# --- [2/4] IAM AND PORT DATASETS ---
 IAM_GROUPS = {
     "Cloud Functions": ["cloudfunctions.functions.create", "cloudfunctions.functions.delete", "cloudfunctions.functions.get", "cloudfunctions.functions.getIamPolicy", "cloudfunctions.functions.setIamPolicy", "cloudfunctions.operations.get"],
     "Compute Engine": ["compute.addresses.createInternal", "compute.addresses.deleteInternal", "compute.addresses.get", "compute.addresses.setLabels", "compute.addresses.useInternal", "compute.disks.create", "compute.disks.setLabels", "compute.healthChecks.create", "compute.healthChecks.delete", "compute.healthChecks.get", "compute.healthChecks.use", "compute.images.get", "compute.images.useReadOnly", "compute.instanceGroupManagers.create", "compute.instanceGroupManagers.delete", "compute.instanceGroupManagers.get", "compute.instanceGroups.create", "compute.instanceGroups.delete", "compute.instanceGroups.get", "compute.instanceTemplates.create", "compute.instanceTemplates.delete", "compute.instanceTemplates.get", "compute.instanceTemplates.useReadOnly", "compute.instances.create", "compute.instances.get", "compute.instances.setLabels", "compute.instances.setMetadata", "compute.instances.setTags", "compute.regionOperations.get", "compute.subnetworks.get", "compute.subnetworks.use", "compute.resourcePolicies.create", "compute.resourcePolicies.delete", "compute.resourcePolicies.get"],
@@ -20,42 +24,17 @@ IAM_GROUPS = {
     "Cloud Storage": ["storage.buckets.create", "storage.buckets.delete", "storage.buckets.get", "storage.objects.create", "storage.objects.delete", "storage.objects.get"]
 }
 
+# Generic baseline ports — extend PORT_GROUPS for your workload
 PORT_GROUPS = {
-    "Network Services (TCP)": [
-        ("22", "tcp", "SSH"), ("80", "tcp", "HTTP"), ("111", "tcp", "rpcbind"),
-        ("389", "tcp", "LDAP"), ("443", "tcp", "HTTPS"), ("445", "tcp", "SMB"),
-        ("636", "tcp", "Secure LDAP"), ("2049", "tcp", "NFS"), 
-        ("3268", "tcp", "LDAP Catalogue"), ("3269", "tcp", "LDAP Catalogue SSL"),
-        ("4420", "tcp", "spdk target"), ("4520", "tcp", "spdk target"),
-        ("5000", "tcp", "Docker registry"), ("6126", "tcp", "mlx sharpd"),
-        ("9090", "tcp", "Tabular"), ("9092", "tcp", "Kafka"),
-        ("20048", "tcp", "mount"), ("20106", "tcp", "NSM"),
-        ("20107", "tcp", "NLM"), ("20108", "tcp", "NFS_RQUOTA")
+    "Baseline (TCP)": [
+        ("22", "tcp", "SSH"), ("80", "tcp", "HTTP"),
+        ("389", "tcp", "LDAP"), ("443", "tcp", "HTTPS"),
+        ("636", "tcp", "LDAPS"),
+        # Add more: ("PORT", "tcp|udp", "LABEL"),
     ],
-    "VAST Processes (TCP/UDP)": [
-        ("3128", "tcp", "Call Home Proxy"), ("4000", "tcp", "Dnode Internal"),
-        ("4001", "tcp", "Dnode Internal"), ("4100", "tcp", "Dnode Internal"),
-        ("4101", "tcp", "Dnode Internal"), ("4200", "tcp", "Cnode Internal"),
-        ("4201", "tcp", "Cnode Internal"), ("5200", "tcp", "Cnode Internal data"),
-        ("5201", "tcp", "Cnode Internal data"), ("5551", "tcp", "vms_monitor"),
-        ("6000", "tcp", "leader"), ("6001", "tcp", "leader"),
-        ("7000", "tcp", "Dnode Internal"), ("7100", "tcp", "Dnode Internal"),
-        ("7101", "tcp", "Dnode Internal"), ("8000", "tcp", "mcvms"),
-        ("4001", "udp", "Dnode Internal"), ("4005", "udp", "Dnode1 Platform CAS"),
-        ("4101", "udp", "Dnode Internal"), ("4105", "udp", "Dnode1 Data CAS"),
-        ("4205", "udp", "CAS Operations"), ("5205-5239", "udp", "Cnode Silos CAS"),
-        ("6005", "udp", "Leader CAS"), ("7005", "udp", "Dnode2 Platform CAS"),
-        ("7105", "udp", "Dnode2 Data CAS")
-    ],
-    "Optional & RDMA Services": [
-        ("1611", "tcp", "vperfsanity"), ("1612", "tcp", "vperfsanity"),
-        ("2611", "tcp", "netbench"), ("49001", "tcp", "Replication"),
-        ("49002", "tcp", "Replication"), ("53", "udp", "DNS"),
-        ("20049", "tcp", "nfs/RDMA")
-    ]
 }
 
-class VastLibraryValidator:
+class LibraryValidator:
     def __init__(self, project_id, vpc_name, region=None):
         self.project_id = project_id
         self.project_path = f"projects/{project_id}"
@@ -88,7 +67,7 @@ class VastLibraryValidator:
 
     def audit_quotas(self):
         """Checks for Z3 Storage-Optimized CPUs and SSD Limits."""
-        print(f"\n[*] QUOTAS: VAST Z3 Specific Availability ({self.region})")
+        print(f"\n[*] QUOTAS: Z3 Specific Availability ({self.region})")
         print("-" * 95)
         
         try:
@@ -162,7 +141,7 @@ if __name__ == "__main__":
         print("Usage: python3 gcp_validate.py <PROJECT_ID> <VPC_NAME> [REGION]")
     else:
         target_region = sys.argv[3] if len(sys.argv) > 3 else "us-central1"
-        v = VastLibraryValidator(sys.argv[1], sys.argv[2], target_region)
+        v = LibraryValidator(sys.argv[1], sys.argv[2], target_region)
         v.check_pga_subnets()
         v.audit_quotas()
         v.verify_iam_native()

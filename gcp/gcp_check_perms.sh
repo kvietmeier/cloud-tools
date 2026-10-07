@@ -1,12 +1,10 @@
 #!/bin/bash
+# Copyright 2026 Karl Vietmeier
+# Licensed under the Apache License, Version 2.0
 # ==============================================================================
-# VAST Data GCP IAM Permission Specialist
-# Copyright 2026 Karl Vietmeier and VAST Data
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# ==============================================================================
+# GCP IAM Permission Specialist
 # SUMMARY:
-# Audits vAST on Cloud IAM permissions. Supports a -v flag for full verbosity
+# Audits IAM permissions. Supports a -v flag for full verbosity
 # listing EVERY permission checked across all service groups.
 # ==============================================================================
 
@@ -27,7 +25,7 @@ done
 [[ -z "$PROJECT_ID" || "$PROJECT_ID" == "-v" ]] && read -p "Enter GCP Project ID: " PROJECT_ID
 
 echo "============================================================"
-echo " VAST IAM Permission Auditor: $PROJECT_ID"
+echo " GCP IAM Permission Auditor: $PROJECT_ID"
 [[ "$VERBOSE" == "true" ]] && echo " MODE: Verbose (Listing all permissions)"
 echo "============================================================"
 

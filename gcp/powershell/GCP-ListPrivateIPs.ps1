@@ -1,3 +1,6 @@
+# Copyright 2026 Karl Vietmeier
+# Licensed under the Apache License, Version 2.0
+
 <#
 .SYNOPSIS
     Lists all reserved INTERNAL IP addresses in the current GCP project.

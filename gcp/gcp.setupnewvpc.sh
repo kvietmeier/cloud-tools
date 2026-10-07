@@ -1,16 +1,13 @@
 #!/usr/bin/env bash
+# Copyright 2026 Karl Vietmeier
+# Licensed under the Apache License, Version 2.0
 #===========================================================
-# File: setup_voc_vpc_multi.sh
-# Description: Creates a multi-region custom VPC for VAST on Cloud.
+# File: gcp.setupnewvpc.sh
+# Description: Creates a multi-region custom VPC.
 #              - 3 subnets in 3 regions (expandable)
 #              - Cloud Routers + NAT in each region
 #              - Private Google Access enabled on all subnets
-#              - Global firewall rules for RFC1918, GCP services, and VAST ports
-#
-# License: 
-#   Copyright (c) 2025 Karl Vietmeier
-#   Permission is granted to use, copy, modify, and distribute this script
-#   for any purpose without fee, provided the above notice appears in all copies.
+#              - Global firewall rules for RFC1918, GCP services, and app ports
 #
 # Required Permissions / Roles:
 #   - VPC & Subnets: compute.networks.create, compute.networks.update,
@@ -49,8 +46,8 @@ echo "Using GCP project: $PROJECT_ID"
 #===========================================================
 # Configurable variables
 #===========================================================
-VPC_NAME="voc-vpc"
-PORT_FILE="./vast_ports.txt"
+VPC_NAME="lab-vpc"
+PORT_FILE="./ports.txt"
 
 declare -A REGIONS=(
   ["us-central1"]="10.0.0.0/20"
@@ -158,21 +155,21 @@ create_firewall_rules() {
     --source-ranges=35.191.0.0/16,130.211.0.0/22,199.36.153.4/30,199.36.153.8/30,35.235.240.0/20,35.199.192.0/19 \
     --description="Allow GCP health checks, IAP, Private APIs, Cloud DNS" || echo "Firewall rule already exists, continuing..."
 
-  # Load VAST ports
+  # Load optional port list (one "proto:port" per line). Edit PORT_FILE or defaults below.
   if [[ -f "${PORT_FILE}" ]]; then
-    echo ">>> Loading VAST ports from ${PORT_FILE}"
+    echo ">>> Loading ports from ${PORT_FILE}"
     PORTS=$(grep -v '^#' "${PORT_FILE}" | xargs | tr ' ' ',')
   else
-    echo ">>> No ${PORT_FILE} found, using default ports"
-    PORTS="tcp:22,tcp:80,tcp:111,tcp:389,tcp:443,tcp:445,tcp:636,tcp:2049,tcp:3128,tcp:3268,tcp:3269,tcp:4000,tcp:4001,tcp:4100,tcp:4101,tcp:4200,tcp:4201,tcp:4420,tcp:4520,tcp:5000,tcp:5200,tcp:5201,tcp:5551,tcp:6000,tcp:6001,tcp:6126,tcp:7000,tcp:7001,tcp:7100,tcp:7101,tcp:8000,tcp:9090,tcp:9092,tcp:20048,tcp:20106,tcp:20107,tcp:20108,tcp:49001,tcp:49002,tcp:1611,tcp:1612,tcp:2611,udp:4005,udp:4105,udp:4205,udp:5205-5241,udp:6005,udp:7005,udp:7105"
+    echo ">>> No ${PORT_FILE} found, using default ports (edit script or add ${PORT_FILE} to extend)"
+    PORTS="tcp:22,tcp:80,tcp:443,tcp:389,tcp:636"
   fi
 
-  echo ">>> Creating firewall rule: VAST ports"
-  gcloud compute firewall-rules create "${VPC_NAME}-allow-vast" \
+  echo ">>> Creating firewall rule: application ports"
+  gcloud compute firewall-rules create "${VPC_NAME}-allow-ports" \
     --network="${VPC_NAME}" \
     --allow="${PORTS}" \
     --source-ranges=0.0.0.0/0 \
-    --description="Allow required TCP/UDP ports for VAST on Cloud" || echo "Firewall rule already exists, continuing..."
+    --description="Allow required TCP/UDP application ports" || echo "Firewall rule already exists, continuing..."
 }
 
 #===========================================================

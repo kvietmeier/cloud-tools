@@ -1,4 +1,6 @@
 #!/bin/bash
+# Copyright 2026 Karl Vietmeier
+# Licensed under the Apache License, Version 2.0
 # GCP-Azure HA VPN Connection Management Script
 # This script creates and tears down the required GCP resources for an HA VPN connection to Azure.
 
@@ -7,9 +9,9 @@ set -euo pipefail # Exit immediately if a command exits with a non-zero status.
 echo "Loading configuration variables..."
 
 ### VPC and Region
-PROJECT="clouddev-itdesk124"
+PROJECT="my-gcp-project"
 GCP_REGION="us-central1"
-GCP_VPC="karlv-corevpc"
+GCP_VPC="lab-vpc"
 
 ### VPN Gateway, Router, External GW, and BGP ASN
 HA_VPN_GW_NAME="vpn-gateway-azure-central1"
@@ -25,9 +27,9 @@ BGP_PEER_IF1="azure-bgp-peer-if1"
 PRIORITY=100
 
 ### From Azure -
-SHARED_KEY='Q()dPJmvMHxca0(!n$Gc'
-AZURE_PUBIP0="20.121.130.26"
-AZURE_PUBIP1="172.172.233.46"
+SHARED_KEY='REPLACE_WITH_SHARED_KEY'
+AZURE_PUBIP0="203.0.113.10"
+AZURE_PUBIP1="203.0.113.11"
 AZURE_APIPA_BGP_A="169.254.21.2"  # Azure's BGP IP
 AZURE_APIPA_BGP_B="169.254.22.2"  # Azure's BGP IP
 AZURE_ASN_B="65006"

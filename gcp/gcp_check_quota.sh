@@ -1,12 +1,10 @@
 #!/bin/bash
+# Copyright 2026 Karl Vietmeier
+# Licensed under the Apache License, Version 2.0
 # ==============================================================================
-# VAST Data GCP Quota Specialist
-# Copyright 2026 Karl Vietmeier and VAST Data
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# ==============================================================================
+# GCP Quota Specialist
 # SUMMARY:
-# This specialist module audits Z3-Family hardware availability across GCP.
+# This module audits Z3-Family hardware availability across GCP.
 # It performs a multi-dimensional intersection check to ensure a region has
 # BOTH the required Z3 CPUs (1500+) AND Z3 Local SSD storage (1PB+).
 # It provides direct gcloud alpha templates for requesting quota increases.
@@ -37,7 +35,7 @@ MIN_Z3_CPU=1500
 MIN_SSD_GB=1000000
 
 echo "============================================================"
-echo " VAST Quota Analysis: $PROJECT_ID"
+echo " GCP Quota Analysis: $PROJECT_ID"
 echo "============================================================"
 
 # ---------------------------------------------------------

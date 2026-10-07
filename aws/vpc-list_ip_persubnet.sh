@@ -1,4 +1,6 @@
 #!/bin/bash
+# Copyright 2026 Karl Vietmeier
+# Licensed under the Apache License, Version 2.0
 
 # ==============================================================================
 # Script: list-subnet-ips.sh

@@ -1,7 +1,8 @@
 #!/bin/bash
-
+# Copyright 2026 Karl Vietmeier
+# Licensed under the Apache License, Version 2.0
 ###############################################################################
-# Script:        list-gcp-internal-ips.sh
+# Script:        gcp.list_priv_ips.sh
 #
 # SYNOPSIS
 #     Lists all reserved INTERNAL IP addresses in the current GCP project.
@@ -14,8 +15,6 @@
 #         - Subnet, Region, Purpose, Status
 #
 # NOTES
-#     Author: Karl Vietmeier
-#     Date:   2025-07-09
 #     Requires: Google Cloud SDK (gcloud), jq
 #
 # EXAMPLE

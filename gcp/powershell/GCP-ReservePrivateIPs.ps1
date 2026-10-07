@@ -1,7 +1,10 @@
+# Copyright 2026 Karl Vietmeier
+# Licensed under the Apache License, Version 2.0
+
 # Define your GCP project, region, and subnet
-$projectId    = "clouddev-itdesk124"           # Name - not number
-$region       = "us-west2" # Replace with your desired region
-$subnetName   = "subnet-hub-us-west2-voc1" # Replace with your subnet name
+$projectId    = "my-gcp-project"           # Name - not number
+$region       = "us-west2"                 # Replace with your desired region
+$subnetName   = "subnet-lab-us-west2"      # Replace with your subnet name
 
 # Define how many IPs you want to reserve
 $numberOfIpsToReserve = 20

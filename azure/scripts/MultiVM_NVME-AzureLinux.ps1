@@ -117,8 +117,8 @@ Set-Location $PSscriptroot
 
 # Use existing network resources: vNet, Subnet, NSG - set to your own
 $Region         = "westus3"
-$vNetName       = "vnet-uswest3-hub-karlv"
-$vNetRG         = "rg-westus3-karlv-coreresources"
+$vNetName       = "vnet-lab"
+$vNetRG         = "lab-rg"
 $index          = "1"
 
 ### Image Definitions
@@ -139,7 +139,7 @@ $Version        = "latest"
 $ResourceGroup  = "rg-deleteme02"
 $VMSize         = "Standard_E2bds_v5"   # E#bds is required for NVMe
 $DiskController = "NVMe"                # Choices - "SCSI" and "NVMe"
-$VMPrefix       = "vastnfs"
+$VMPrefix       = "labnfs"
 $DiskPrefix     = "datadisk"
 $Zone           = "1"                   # Need for UltraSSD
 $PPGName        = "TempPPG1"

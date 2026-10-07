@@ -1,12 +1,10 @@
 #!/bin/bash
+# Copyright 2026 Karl Vietmeier
+# Licensed under the Apache License, Version 2.0
 # ==============================================================================
-# VAST Data GCP Pre-Flight Validator
-# Copyright 2026 Karl Vietmeier and VAST Data
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# ==============================================================================
+# GCP Pre-Flight Validator
 # SUMMARY:
-# This tool performs a "ready-to-build" audit for VAST clusters.
+# This tool performs a "ready-to-build" audit for GCP projects.
 # If a subnet is provided, it targets that specific region for quotas.
 # If no subnet is provided, it audits ALL subnets in the VPC.
 # ==============================================================================
@@ -39,7 +37,7 @@ fi
 
 
 echo "============================================================"
-echo " VAST Full-Stack Validator Using Project: $PROJECT_ID"
+echo " GCP Full-Stack Validator Using Project: $PROJECT_ID"
 echo " VPC: $VPC_NAME |    Subnet: ${SUBNET_NAME:-ALL}"
 echo "============================================================"
 

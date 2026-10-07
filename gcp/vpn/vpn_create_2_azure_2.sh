@@ -1,7 +1,10 @@
+#!/bin/bash
+# Copyright 2026 Karl Vietmeier
+# Licensed under the Apache License, Version 2.0
 # --- Configuration Variables ---
-PROJECT="clouddev-itdesk124"
+PROJECT="my-gcp-project"
 GCP_REGION="us-central1"
-GCP_VPC="karlv-corevpc"
+GCP_VPC="lab-vpc"
 HA_VPN_GW_NAME="vpn-gateway-azure-central1"
 ROUTER_NAME="router-azure-central1"
 EXTERNAL_GW_NAME="vpn-gateway-azure-central1"
@@ -15,16 +18,16 @@ GCP_APIPA_BGP_B="169.254.22.9"
 BGP_PEER_IF0="azure-bgp-peer-if0"
 BGP_PEER_IF1="azure-bgp-peer-if1"
 PRIORITY=100
-SHARED_KEY='xVTsD61QPvDUPgD3bJvyaxo6s+peCTD6'
-AZURE_PUBIP0="4.249.107.59"
-AZURE_PUBIP1="4.249.107.48"
+SHARED_KEY='REPLACE_WITH_SHARED_KEY'
+AZURE_PUBIP0="203.0.113.10"
+AZURE_PUBIP1="203.0.113.11"
 AZURE_APIPA_BGP_A="169.254.21.10"
 AZURE_APIPA_BGP_B="169.254.22.10"
 AZURE_ASN_B="65010"
 
 # Generate a new key
 openssl rand -base64 24
-xVTsD61QPvDUPgD3bJvyaxo6s+peCTD6
+# openssl rand -base64 24  # paste result into SHARED_KEY
 
 
 
@@ -101,12 +104,12 @@ gcloud compute external-vpn-gateways delete "$EXTERNAL_GW_NAME" --region="$GCP_R
 #  Single-Link VPN Setup Commands
 # =========================================================================
 
-SHARED_KEY='Q()dPJmvMHxca0(!n$Gc'
+SHARED_KEY='REPLACE_WITH_SHARED_KEY'
 
 # --- Configuration Variables (Single-Link Setup) ---   
-PROJECT="clouddev-itdesk124"
+PROJECT="my-gcp-project"
 GCP_REGION="us-central1"
-GCP_VPC="karlv-corevpc"
+GCP_VPC="lab-vpc"
 
 # Gateway, Router, External GW, and BGP ASN
 HA_VPN_GW_NAME="vpn-gateway-azure-central1"
@@ -121,7 +124,7 @@ BGP_PEER_IF0="azure-bgp-peer-if0"
 PRIORITY=100
 
 # Azure/Remote Credentials (only need one set of public/BGP IPs)
-AZURE_PUBIP0="20.121.130.26" # Public IP of the remote peer gateway
+AZURE_PUBIP0="203.0.113.10" # Public IP of the remote peer gateway
 AZURE_APIPA_BGP_A="169.254.21.2" # The BGP IP assigned by the remote peer for Tunnel 0
 AZURE_ASN_B="65006" # The remote peer's ASN
 

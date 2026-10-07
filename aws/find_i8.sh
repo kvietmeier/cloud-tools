@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Copyright 2026 Karl Vietmeier
+# Licensed under the Apache License, Version 2.0
 # Find Availability Zones where i8g / i8ge instance families are offered.
 # One line per AZ: which families are present (not every size).
 

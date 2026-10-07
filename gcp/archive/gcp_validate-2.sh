@@ -1,4 +1,6 @@
 #!/bin/bash
+# Copyright 2026 Karl Vietmeier
+# Licensed under the Apache License, Version 2.0
 
 # Default Values
 PROJECT_ID=$(gcloud config get-value project 2>/dev/null)
@@ -21,7 +23,7 @@ MIN_Z3_CPU=1500
 MIN_SSD_GB=1000000 # 1,000 TB
 
 echo "---------------------------------------------------------"
-echo " Checking Project: $PROJECT_ID for VAST Polaris Readiness"
+echo " Checking Project: $PROJECT_ID for GCP Readiness"
 echo " VPC: $VPC_NAME | Region: $REGION"
 echo "---------------------------------------------------------"
 
@@ -90,7 +92,7 @@ fi
 # ---------------------------------------------------------
 # 3. Network & Exhaustive Firewall Port Audit
 # ---------------------------------------------------------
-echo -e "\n[3/5] Auditing Exhaustive VAST Port List..."
+echo -e "\n[3/5] Auditing Required Port List..."
 
 # Check Private Service Access
 PSA_CHECK=$(gcloud compute addresses list --global --filter="purpose=VPC_PEERING" --project="$PROJECT_ID" --format="value(name)" 2>/dev/null)
@@ -101,26 +103,26 @@ else
 fi
 
 # Dump all ingress rules for the VPC to a temporary JSON file
-gcloud compute firewall-rules list --project="$PROJECT_ID" --filter="network~.*/$VPC_NAME$ AND direction:INGRESS" --format="json(name,allowed)" > /tmp/vast_fw_rules.json 2>/dev/null
+gcloud compute firewall-rules list --project="$PROJECT_ID" --filter="network~.*/$VPC_NAME$ AND direction:INGRESS" --format="json(name,allowed)" > /tmp/fw_rules.json 2>/dev/null
 
-if [ ! -s /tmp/vast_fw_rules.json ]; then
+if [ ! -s /tmp/fw_rules.json ]; then
     echo "  ⚠️  Could not retrieve firewall rules for VPC '$VPC_NAME' (Check permissions or VPC name)."
 else
-    echo "  🔍 Mathematically evaluating all 80+ VAST required TCP/UDP ports against your VPC rules..."
+    echo "  🔍 Evaluating required TCP/UDP ports against your VPC rules..."
     
     PYTHON_OUT=$(python3 -c '
 import json, sys
 
 try:
-    with open("/tmp/vast_fw_rules.json") as f:
+    with open("/tmp/fw_rules.json") as f:
         rules = json.load(f)
 except Exception:
     print("JSON_ERROR")
     sys.exit(1)
 
-# All Required Ports from VAST Documentation
-req_tcp = set([22, 80, 111, 389, 443, 445, 636, 2049, 3268, 3269, 4420, 4520, 5000, 6126, 9090, 9092, 20048, 20106, 20107, 20108, 1611, 1612, 2611, 6000, 6001, 3128, 4000, 4001, 4100, 4101, 4200, 4201, 5200, 5201, 5551, 7000, 7100, 7101, 8000, 49001, 49002])
-req_udp = set([4001, 4005, 4101, 4105, 4205, 6005, 7005, 7105]) | set(range(5205, 5240))
+# Generic baseline ports — extend as needed for your workload
+req_tcp = set([22, 80, 443, 389, 636])
+req_udp = set()
 
 missing_tcp = req_tcp.copy()
 missing_udp = req_udp.copy()
@@ -164,7 +166,7 @@ else:
     elif [[ "$PYTHON_OUT" == *"PASS"* ]]; then
         echo "  ✨ All required TCP and UDP ports are successfully allowed!"
     else
-        echo "  ❌ Firewall rules are missing the following required VAST ports:"
+        echo "  ❌ Firewall rules are missing the following required ports:"
         if echo "$PYTHON_OUT" | grep -q "FAIL_TCP"; then
             echo "     Blocked TCP: $(echo "$PYTHON_OUT" | grep "FAIL_TCP" | cut -d':' -f2 | sed 's/^ //')"
         fi
@@ -173,7 +175,7 @@ else:
         fi
     fi
 fi
-rm -f /tmp/vast_fw_rules.json
+rm -f /tmp/fw_rules.json
 
 # ---------------------------------------------------------
 # 4. GCP Infrastructure CIDR Ingress Check

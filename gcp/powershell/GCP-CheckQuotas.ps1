@@ -1,5 +1,8 @@
+# Copyright 2026 Karl Vietmeier
+# Licensed under the Apache License, Version 2.0
+
 # Replace with your actual Project ID
-$ProjectId = "clouddev-itdesk124"
+$ProjectId = "my-gcp-project"
 
 # List of regions you want to check
 $Regions = @(

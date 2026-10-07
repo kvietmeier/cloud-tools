@@ -1,3 +1,7 @@
+#!/bin/bash
+# Copyright 2026 Karl Vietmeier
+# Licensed under the Apache License, Version 2.0
+
 AMI_ID="ami-1234567890abcdef0"
 REGION_FILE="regions.txt"
 

@@ -1,3 +1,6 @@
+# Copyright 2026 Karl Vietmeier
+# Licensed under the Apache License, Version 2.0
+
 ###========================================================================###
 <#    
    Script Name: Toggle-GCP-VMs.ps1

@@ -1,3 +1,6 @@
+# Copyright 2026 Karl Vietmeier
+# Licensed under the Apache License, Version 2.0
+
 ###====================================================================================###
 <#   
   FileName: listinstances.ps1
@@ -36,7 +39,7 @@ $instances.Split("`n") | ForEach-Object {
     $zone = $details[2]
     
     # Construct the private DNS name based on your domain naming convention
-    $privateDns = "$name.c.clouddev-itdesk124.internal"
+    $privateDns = "$name.c.my-gcp-project.internal"
     
     # Output the VM details
     Write-Host ""

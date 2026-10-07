@@ -1,3 +1,6 @@
+# Copyright 2026 Karl Vietmeier
+# Licensed under the Apache License, Version 2.0
+
 # Define regions you want to check
 $regions = @(
     #"us-central1", "us-east1", "us-east4", "us-west1"

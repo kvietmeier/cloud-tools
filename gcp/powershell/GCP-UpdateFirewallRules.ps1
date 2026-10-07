@@ -1,3 +1,6 @@
+# Copyright 2026 Karl Vietmeier
+# Licensed under the Apache License, Version 2.0
+
 # Update the ingress_rules for GCP FireWall.
 # UpdateGCPFirewallRules.ps1
 

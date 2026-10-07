@@ -1,3 +1,6 @@
+# Copyright 2026 Karl Vietmeier
+# Licensed under the Apache License, Version 2.0
+
 ### --- Delete all of th default subnets in the default VPC.
 
 

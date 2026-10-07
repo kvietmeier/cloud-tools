@@ -1,4 +1,6 @@
 #!/bin/bash
+# Copyright 2026 Karl Vietmeier
+# Licensed under the Apache License, Version 2.0
 # ====================================================================================
 # gcp_manage_client_vms
 # Usage: gcp_manage_client_vms <start|stop|resume|list> [count] [type: lab|gateway]
@@ -43,11 +45,11 @@ gcp_manage_client_vms() {
     local FILTER_STRING=""
 
     if [[ "$TYPE" == "gateway" ]]; then
-        FILTER_STRING="name:voc-gateway*"
-        ALL_VMS=("voc-gateway" "voc-gateway2" "voc-gateway3" "voc-gateway4" "voc-gateway5" \
-                 "voc-gateway6" "voc-gateway7" "voc-gateway8" "voc-gateway9" "voc-gateway10" \
-                 "voc-gateway11" "voc-gateway12" "voc-gateway13" "voc-gateway14" "voc-gateway15" \
-                 "voc-gateway16" "voc-gateway17" "voc-gateway18" "voc-gateway19" "voc-gateway20")
+        FILTER_STRING="name:lab-gateway*"
+        ALL_VMS=("lab-gateway" "lab-gateway2" "lab-gateway3" "lab-gateway4" "lab-gateway5" \
+                 "lab-gateway6" "lab-gateway7" "lab-gateway8" "lab-gateway9" "lab-gateway10" \
+                 "lab-gateway11" "lab-gateway12" "lab-gateway13" "lab-gateway14" "lab-gateway15" \
+                 "lab-gateway16" "lab-gateway17" "lab-gateway18" "lab-gateway19" "lab-gateway20")
     else
         FILTER_STRING="name:labgroup*"
         ALL_VMS=("labgroup01" "labgroup02" "labgroup03" "labgroup04" "labgroup05" \

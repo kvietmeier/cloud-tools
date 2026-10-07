@@ -7,10 +7,8 @@
 #              GCP Cloud Storage (not AWS S3). Public access is
 #              via HTTPS URLs on storage.googleapis.com.
 #
-# License:
-#   Copyright (c) 2026 Karl Vietmeier
-#   Permission is granted to use, copy, modify, and distribute this script
-#   for any purpose without fee, provided the above notice appears in all copies.
+# Copyright 2026 Karl Vietmeier
+# Licensed under the Apache License, Version 2.0
 #
 # Required Permissions / Roles:
 #   - storage.buckets.create, storage.buckets.get, storage.buckets.setIamPolicy

@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
 """
-===============================================================================
+Copyright 2026 Karl Vietmeier
+Licensed under the Apache License, Version 2.0
+
 Title       : gcp_find_z3.py
-Author      : Karl Vietmeier
-Created     : 2025-09-05
-License     : Apache License 2.0
-Description : 
-    This script performs a dry-run check to verify which GCP zones support 
-    creating multiple 'z3-highmem-88-highlssd' VMs. It uses `gcloud` CLI with 
+Description :
+    This script performs a dry-run check to verify which GCP zones support
+    creating multiple 'z3-highmem-88-highlssd' VMs. It uses `gcloud` CLI with
     --dry-run to validate quota, permissions, and capacity.
 
 Usage:
@@ -17,8 +16,7 @@ Notes:
     - Requires gcloud CLI installed and authenticated:
         gcloud auth application-default login
     - Dry-run does not actually create any instances.
-===============================================================================
-"""
+""""""
 
 import subprocess
 

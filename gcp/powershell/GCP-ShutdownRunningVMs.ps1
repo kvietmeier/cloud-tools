@@ -1,3 +1,6 @@
+# Copyright 2026 Karl Vietmeier
+# Licensed under the Apache License, Version 2.0
+
 # PowerShell Script to shutdown Google Cloud VMs with a "RUNNING" state.
 # This script uses 'gcloud' to fetch VM data as JSON, making it more robust
 # than parsing plain text output.

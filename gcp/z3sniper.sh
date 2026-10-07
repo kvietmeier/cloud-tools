@@ -1,29 +1,20 @@
 #!/bin/bash
-# ==============================================================================
-#
 # Copyright 2026 Karl Vietmeier
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-#
+# Licensed under the Apache License, Version 2.0
 # ==============================================================================
 # USAGE SUMMARY
 # ==============================================================================
-# Script: probe_z3_highlssd_capacity.sh
+# Script: z3sniper.sh
 # Purpose: Acts as a "stealth probe" to determine if physical Z3 High Local SSD
 #          inventory is currently available in a specific GCP zone for a 
 #          specified cluster size.
 # 
 # Execution:
-#   chmod +x probe_z3_highlssd_capacity.sh
-#   ./probe_z3_highlssd_capacity.sh <VM_COUNT> <ZONE>
+#   chmod +x z3sniper.sh
+#   ./z3sniper.sh <VM_COUNT> <ZONE>
 #
-# Example (Probing for an 11-node VAST cluster in us-east4-a):
-#   ./probe_z3_highlssd_capacity.sh 11 us-east4-a
+# Example (Probing for an 11-node cluster in us-east4-a):
+#   ./z3sniper.sh 11 us-east4-a
 #
 # Requirements:
 #   - Authenticated gcloud CLI session

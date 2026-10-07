@@ -1,5 +1,8 @@
-# Hardcoded VPN host IP address
-$VPN_HOST = "10.143.11.91"
+# Copyright 2026 Karl Vietmeier
+# Licensed under the Apache License, Version 2.0
+
+# VPN host IP address (placeholder)
+$VPN_HOST = "192.168.1.100"
 
 # Function to display a menu and get user choice
 function Get-UserChoice {
@@ -35,27 +38,29 @@ $uiPorts = @("10043", "11443", "12443", "13443")  # Available UI ports
 $UI_PORTNUM = Get-UserChoice "Pick a UI port" $uiPorts  # Call the function to get user choice
 
 # Get VMS IP from the user
-$vmsIPs = @("DH1 / 10.179.198.10", "CNR1 / 10.179.224.10")  # Available VMS IPs
-$VMS_IP = Get-UserChoice "Choose a VMS IP" $vmsIPs  # Call the function to get user choice
+$vmsIPs = @("mgmt1 / 192.168.1.50", "mgmt2 / 192.168.1.51")  # Available management IPs
+$VMS_IP = Get-UserChoice "Choose a management IP" $vmsIPs  # Call the function to get user choice
 
 # Extract the actual IP address from the selected option
 if ($VMS_IP -ne $null) {
     $VMS_IP = $VMS_IP.Split(' ')[-1]  # Get the last part, which is the IP address
 }
 
+$SSH_USER = "admin"
+
 # Check if SSH_PORTNUM and VMS_IP are valid before proceeding
 if ($SSH_PORTNUM -and $VMS_IP) {
     # Setting up the SSH tunnel
     Write-Host "Setting up SSH tunnel on $SSH_PORTNUM, you may need to enter your password at least once."
-    & ssh -o "StrictHostKeyChecking=no" -o "UserKnownHostsFile=/dev/null" -o "GatewayPorts=yes" -f -N -g -C -R $SSH_PORTNUM:192.168.2.2:22 vastdata@$VPN_HOST
+    & ssh -o "StrictHostKeyChecking=no" -o "UserKnownHostsFile=/dev/null" -o "GatewayPorts=yes" -f -N -g -C -R $SSH_PORTNUM:192.168.2.2:22 ${SSH_USER}@$VPN_HOST
 
     # Setting up the UI tunnel
     Write-Host "Now setting up UI tunnel.."
-    & ssh -o "StrictHostKeyChecking=no" -o "UserKnownHostsFile=/dev/null" -f vastdata@$VPN_HOST "ssh -o 'StrictHostKeyChecking=no' -o 'UserKnownHostsFile=/dev/null' -f -N -g -C -L $UI_PORTNUM:$VMS_IP:443 -p $SSH_PORTNUM vastdata@localhost"
+    & ssh -o "StrictHostKeyChecking=no" -o "UserKnownHostsFile=/dev/null" -f ${SSH_USER}@$VPN_HOST "ssh -o 'StrictHostKeyChecking=no' -o 'UserKnownHostsFile=/dev/null' -f -N -g -C -L $UI_PORTNUM:$VMS_IP:443 -p $SSH_PORTNUM ${SSH_USER}@localhost"
 
     # Display instructions for SSH access
     Write-Host "Tell people they can ssh to:"
-    Write-Host "ssh -p $SSH_PORTNUM vastdata@$VPN_HOST"
+    Write-Host "ssh -p $SSH_PORTNUM ${SSH_USER}@$VPN_HOST"
 
     # Display instructions for connecting to VMS
     Write-Host "Tell people they can connect to VMS at:"
