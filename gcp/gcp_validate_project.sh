@@ -1,17 +1,16 @@
 #!/bin/bash
 # ==============================================================================
-# VAST Data GCP Master Validator (Combined & Modular)
-# Copyright 2026 VAST Data. Licensed under the Apache License, Version 2.0;
+# GCP Master Validator (Combined & Modular)
+# Licensed under the Apache License, Version 2.0;
 # you may not use this file except in compliance with the License.
 # ==============================================================================
 # SUMMARY:
-#   This tool performs a comprehensive "ready-to-build" audit for VAST clusters
-#   in Google Cloud. It validates APIs, network infrastructure (VPC, Subnets, PGA),
-#   GCP Service CIDR ingress, VAST protocol/fabric firewall rules, IAM permissions,
+#   This tool performs a comprehensive "ready-to-build" audit for 
+#   Google Cloud. It validates APIs, network infrastructure (VPC, Subnets, PGA),
+#   GCP Service CIDR ingress, firewall rules, IAM permissions,
 #   and Z3 hardware quota availability.
 #
 # USAGE:
-#   * Run as the user you use to run vastcloud commands.
 #   * Ensure gcloud CLI is installed
 #   * ProjectID can be provided as an argument or will default to the active gcloud project.
 #
@@ -121,7 +120,7 @@ fi
 # ---------------------------------------------------------
 read -p "Would you like to save this audit output to a log file? (y/N): " SAVE_LOG
 if [[ "$SAVE_LOG" =~ ^[Yy]$ ]]; then
-    LOG_FILE="vast_gcp_audit_${PROJECT_ID}_$(date +%Y%m%d_%H%M%S).log"
+    LOG_FILE="gcp_audit_${PROJECT_ID}_$(date +%Y%m%d_%H%M%S).log"
     echo "Logging all output to $LOG_FILE..."
     # This pipes all terminal output to the log file without changing any echo commands
     exec > >(tee -i "$LOG_FILE")
@@ -129,7 +128,7 @@ if [[ "$SAVE_LOG" =~ ^[Yy]$ ]]; then
 fi
 
 echo -e "\n========================================================================"
-echo " VAST on Cloud Requirements Validator Using Project: $PROJECT_ID"
+echo " GCP Requirements Validator Using Project: $PROJECT_ID"
 echo " VPC: $VPC_NAME | Subnet: ${SUBNET_NAME:-ALL}"
 echo " Rule: ${TARGET_RULE:-FULL VPC SCAN}"
 [[ "$VERBOSE" == "true" ]] && echo " MODE: Verbose (Listing all permissions)"
@@ -215,10 +214,26 @@ check_firewall_cidrs() {
 }
 
 # ---------------------------------------------------------
-# Function: VAST Protocol & Fabric Auditor
+# Function: Firewall Port Auditor
 # ---------------------------------------------------------
+# REQUIRED_PORTS entries are "port:proto:label". Edit this list for your
+# workload. Example extras (uncomment / append as needed):
+#   "4420:tcp:NVMe-oF"
+#   "2049:tcp:NFS"
+#   "445:tcp:SMB"
+#   "111:tcp:rpcbind"
+#   "20048:tcp:mountd"
+REQUIRED_PORTS=(
+    "22:tcp:SSH"
+    "80:tcp:HTTP"
+    "443:tcp:HTTPS"
+    "389:tcp:LDAP"
+    "636:tcp:LDAPS"
+    # Add more ports below, e.g. "PORT:tcp:LABEL" or "PORT:udp:LABEL"
+)
+
 check_fabric_ports() {
-    echo -e "\n[*] Identifying Active Ingress Rules in $VPC_NAME for Fabric Audit..."
+    echo -e "\n[*] Identifying Active Ingress Rules in $VPC_NAME for Port Audit..."
     echo "------------------------------------------------------------"
 
     if [[ -n "$TARGET_RULE" ]]; then
@@ -251,32 +266,12 @@ check_fabric_ports() {
         fi
     }
 
-    echo -e "\n[*] PHASE 1: Client & Management Connectivity"
+    echo -e "\n[*] Required Ports (edit REQUIRED_PORTS to extend)"
     echo "------------------------------------------------------------"
-    for p in "2049:tcp:NFS" "445:tcp:SMB" "4420:tcp:NVMe-oF" "443:tcp:HTTPS/Mgmt" "80:tcp:HTTP" "22:tcp:SSH" "389:tcp:LDAP" "636:tcp:Secure LDAP" "3268:tcp:LDAP Cat" "3269:tcp:LDAP Cat SSL"; do
-        IFS=":" read -r port proto lab <<< "$p"; check_port "$proto" "$port" "$lab"
-    done
-
-    echo -e "\n[*] PHASE 2: Internal Cluster Fabric (Node-to-Node)"
-    echo "------------------------------------------------------------"
-    echo "--- Control & Monitoring ---"
-    for p in "5551:tcp:vms_monitor" "6000:tcp:Leader" "6001:tcp:Leader Alt" "8000:tcp:mcvms" "3128:tcp:Call Home Proxy" "5000:tcp:Docker Registry"; do
-        IFS=":" read -r port proto lab <<< "$p"; check_port "$proto" "$port" "$lab"
-    done
-
-    echo -e "\n--- Data Plane & Internal RPC ---"
-    for p in "4000:tcp:Dnode Internal" "4100:tcp:Dnode Internal" "4200:tcp:Cnode Internal" "4201:tcp:Cnode Internal" "5200:tcp:Cnode Internal Data" "5201:tcp:Cnode Internal Data" "4520:tcp:SPDK Target" "7000:tcp:Dnode Internal" "7100:tcp:Dnode Internal"; do
-        IFS=":" read -r port proto lab <<< "$p"; check_port "$proto" "$port" "$lab"
-    done
-
-    echo -e "\n--- CAS & Silos (UDP/TCP) ---"
-    for p in "4001:udp:Dnode Internal UDP" "4005:udp:Dnode1 Platform CAS" "4105:udp:Dnode1 Data CAS" "4205:udp:CAS Operations" "6005:udp:Leader CAS" "5205:udp:Cnode Silo Start" "5239:udp:Cnode Silo End"; do
-        IFS=":" read -r port proto lab <<< "$p"; check_port "$proto" "$port" "$lab"
-    done
-
-    echo -e "\n--- Support & RPC Services ---"
-    for p in "111:tcp:rpcbind" "20048:tcp:mount" "20106:tcp:NSM/Status" "20107:tcp:NLM/nlockmgr" "20108:tcp:NFS_RQUOTA" "9090:tcp:Tabular" "9092:tcp:Kafka"; do
-        IFS=":" read -r port proto lab <<< "$p"; check_port "$proto" "$port" "$lab"
+    for p in "${REQUIRED_PORTS[@]}"; do
+        [[ -z "$p" || "$p" =~ ^[[:space:]]*# ]] && continue
+        IFS=":" read -r port proto lab <<< "$p"
+        check_port "$proto" "$port" "$lab"
     done
     echo ""
 }

@@ -1,10 +1,8 @@
 # GCP Scripts
 
-Bash (and some PowerShell) utilities for **VAST on Cloud** GCP work: project readiness audits, VPC/IP inventory, quotas, VPN helpers, and lab VM ops.
+Bash (and some PowerShell) utilities for GCP work: project readiness audits, VPC/IP inventory, quotas, VPN helpers, and lab VM ops.
 
 Auth and shell aliases live in `system-tools`. Runnable multi-step cloud jobs live here.
-
-VoC cluster troubleshooting (VIP/alias attach audit, orphan VIP scan, forensics) lives in the private `sre-runbooks` repo under `vastcloud/scripts/` — not in this public repo.
 
 ## Prerequisites
 
@@ -20,7 +18,7 @@ VoC cluster troubleshooting (VIP/alias attach audit, orphan VIP scan, forensics)
 | `*.sh` | Main CLI procedures (project root of this folder) |
 | `vpn/` | GCP↔Azure HA VPN create / rebuild / diagnostics |
 | `powershell/` | Windows/PowerShell equivalents for IPs, VMs, quotas, IAP |
-| `archive/` | Older validators / one-offs (not maintained) |
+| `archive/` | Older one-offs (not maintained) |
 
 ---
 
@@ -81,13 +79,6 @@ gcloud config get-value account
 ./gcp.list_priv_ips.sh
 ```
 
-### Project validator
-
-```bash
-./gcp_validate_project.sh [PROJECT_ID] [VPC_NAME] [SUBNET_NAME] [TARGET_RULE] [-v]
-# Omitting args prompts interactively. -v lists every IAM permission checked.
-```
-
 ### Firewall / APIs / perms / quota (standalone)
 
 ```bash
@@ -137,10 +128,3 @@ Edit project/VPC/ASN/APIPA values inside the scripts under `vpn/`, then:
 ```
 
 ---
-
-## Notes
-
-* `vast_ports.txt` :  reference port list used by firewall audits.
-* Sample audit output may appear as `vast_gcp_audit_*.txt`; those are run artifacts, not inputs.
-* Prefer `gcp_validate_project.sh` over anything under `archive/`.
-* VoC VIP/alias attach and orphan-IP troubleshooting: private `sre-runbooks` → `vastcloud/scripts/`.
