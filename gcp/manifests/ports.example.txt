@@ -1,0 +1,13 @@
+# One port per line. Formats:
+#   port:proto:label
+#   proto:port:label
+#   proto:port
+#
+# Add more lines as needed for your workload.
+22:tcp:SSH
+80:tcp:HTTP
+443:tcp:HTTPS
+389:tcp:LDAP
+636:tcp:LDAPS
+# 2049:tcp:NFS
+# 445:tcp:SMB

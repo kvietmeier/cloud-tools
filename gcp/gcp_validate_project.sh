@@ -14,11 +14,17 @@
 #   * Ensure gcloud CLI is installed
 #   * ProjectID can be provided as an argument or will default to the active gcloud project.
 #
-#   ./gcp_check_all.sh [PROJECT_ID] [VPC_NAME] [SUBNET_NAME] [TARGET_RULE] [-v]
+#   ./gcp_validate_project.sh [PROJECT_ID] [VPC_NAME] [SUBNET_NAME] [TARGET_RULE] [-v]
+#     [--perms PATH] [--ports PATH]
 #     - If arguments are omitted, the script will prompt interactively.
-#     - Use -v or --verbose to list all permissions during the IAM check. 
+#     - Use -v or --verbose to list all permissions during the IAM check.
+#     - --perms / --ports: JSON, YAML, or (ports) TXT manifests; see manifests/*.example.*
+#     - Or set GCP_PERMS_MANIFEST / GCP_PORTS_MANIFEST.
 # ==============================================================================
 
+_GCP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/manifest.sh
+source "${_GCP_DIR}/lib/manifest.sh"
 
 # ---------------------------------------------------------
 # Preflight Check: Bash Version + Dependencies
@@ -86,14 +92,26 @@ preflight_check() {
 # ---------------------------------------------------------
 
 VERBOSE=false
+PERMS_MANIFEST="${GCP_PERMS_MANIFEST:-}"
+PORTS_MANIFEST="${GCP_PORTS_MANIFEST:-}"
 POSITIONAL_ARGS=()
 
-for arg in "$@"; do
-    if [[ "$arg" == "-v" || "$arg" == "--verbose" ]]; then
-        VERBOSE=true
-    else
-        POSITIONAL_ARGS+=("$arg")
-    fi
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -v|--verbose) VERBOSE=true; shift ;;
+        --perms|--permissions-manifest)
+            PERMS_MANIFEST="$2"; shift 2 ;;
+        --perms=*|--permissions-manifest=*)
+            PERMS_MANIFEST="${1#*=}"; shift ;;
+        --ports|--ports-manifest)
+            PORTS_MANIFEST="$2"; shift 2 ;;
+        --ports=*|--ports-manifest=*)
+            PORTS_MANIFEST="${1#*=}"; shift ;;
+        -h|--help)
+            echo "Usage: $0 [PROJECT_ID] [VPC_NAME] [SUBNET_NAME] [TARGET_RULE] [-v] [--perms PATH] [--ports PATH]"
+            exit 0 ;;
+        *) POSITIONAL_ARGS+=("$1"); shift ;;
+    esac
 done
 
 PROJECT_ID=${POSITIONAL_ARGS[0]:-}
@@ -115,6 +133,18 @@ if [[ -z "$PROJECT_ID" ]]; then
     exit 1
 fi
 
+if [[ -n "$PERMS_MANIFEST" ]]; then
+    load_permissions_manifest "$PERMS_MANIFEST" || exit 1
+else
+    load_default_permissions
+fi
+
+if [[ -n "$PORTS_MANIFEST" ]]; then
+    load_ports_manifest "$PORTS_MANIFEST" || exit 1
+else
+    load_default_ports
+fi
+
 # ---------------------------------------------------------
 # Optional File Logging Feature
 # ---------------------------------------------------------
@@ -132,6 +162,8 @@ echo " GCP Requirements Validator Using Project: $PROJECT_ID"
 echo " VPC: $VPC_NAME | Subnet: ${SUBNET_NAME:-ALL}"
 echo " Rule: ${TARGET_RULE:-FULL VPC SCAN}"
 [[ "$VERBOSE" == "true" ]] && echo " MODE: Verbose (Listing all permissions)"
+[[ -n "$PERMS_MANIFEST" ]] && echo " Perms manifest: $PERMS_MANIFEST"
+[[ -n "$PORTS_MANIFEST" ]] && echo " Ports manifest: $PORTS_MANIFEST"
 echo "========================================================================"
 
 # ---------------------------------------------------------
@@ -216,22 +248,6 @@ check_firewall_cidrs() {
 # ---------------------------------------------------------
 # Function: Firewall Port Auditor
 # ---------------------------------------------------------
-# REQUIRED_PORTS entries are "port:proto:label". Edit this list for your
-# workload. Example extras (uncomment / append as needed):
-#   "4420:tcp:NVMe-oF"
-#   "2049:tcp:NFS"
-#   "445:tcp:SMB"
-#   "111:tcp:rpcbind"
-#   "20048:tcp:mountd"
-REQUIRED_PORTS=(
-    "22:tcp:SSH"
-    "80:tcp:HTTP"
-    "443:tcp:HTTPS"
-    "389:tcp:LDAP"
-    "636:tcp:LDAPS"
-    # Add more ports below, e.g. "PORT:tcp:LABEL" or "PORT:udp:LABEL"
-)
-
 check_fabric_ports() {
     echo -e "\n[*] Identifying Active Ingress Rules in $VPC_NAME for Port Audit..."
     echo "------------------------------------------------------------"
@@ -266,7 +282,7 @@ check_fabric_ports() {
         fi
     }
 
-    echo -e "\n[*] Required Ports (edit REQUIRED_PORTS to extend)"
+    echo -e "\n[*] Required Ports"
     echo "------------------------------------------------------------"
     for p in "${REQUIRED_PORTS[@]}"; do
         [[ -z "$p" || "$p" =~ ^[[:space:]]*# ]] && continue
@@ -297,19 +313,9 @@ check_iam_permissions() {
         echo "    [INFO] No Primitive Role detected. Checking granular perms."
     fi
 
-    declare -A PERM_GROUPS=(
-        ["Cloud Functions"]="cloudfunctions.functions.create cloudfunctions.functions.delete cloudfunctions.functions.get cloudfunctions.functions.getIamPolicy cloudfunctions.functions.setIamPolicy cloudfunctions.operations.get"
-        ["Compute Engine"]="compute.addresses.createInternal compute.addresses.deleteInternal compute.addresses.get compute.addresses.setLabels compute.addresses.useInternal compute.disks.create compute.disks.setLabels compute.healthChecks.create compute.healthChecks.delete compute.healthChecks.get compute.healthChecks.use compute.images.get compute.images.useReadOnly compute.instanceGroupManagers.create compute.instanceGroupManagers.delete compute.instanceGroupManagers.get compute.instanceGroups.create compute.instanceGroups.delete compute.instanceGroups.get compute.instanceTemplates.create compute.instanceTemplates.delete compute.instanceTemplates.get compute.instanceTemplates.useReadOnly compute.instances.create compute.instances.get compute.instances.setLabels compute.instances.setMetadata compute.instances.setTags compute.regionOperations.get compute.subnetworks.get compute.subnetworks.use compute.resourcePolicies.create compute.resourcePolicies.delete compute.resourcePolicies.get"
-        ["IAM & SAs"]="iam.roles.create iam.roles.delete iam.roles.get iam.roles.undelete iam.serviceAccounts.actAs iam.serviceAccounts.create iam.serviceAccounts.delete iam.serviceAccounts.get"
-        ["Resource Manager"]="resourcemanager.projects.get resourcemanager.projects.getIamPolicy resourcemanager.projects.setIamPolicy"
-        ["Secret Manager"]="secretmanager.secrets.create secretmanager.secrets.delete secretmanager.secrets.get secretmanager.versions.access secretmanager.versions.add secretmanager.versions.destroy secretmanager.versions.enable secretmanager.versions.get"
-        ["Cloud Storage"]="storage.buckets.create storage.buckets.delete storage.buckets.get storage.objects.create storage.objects.delete storage.objects.get"
-    )
-
     TOKEN=$(gcloud auth print-access-token 2>/dev/null)
-    ORDER=("Cloud Functions" "Compute Engine" "IAM & SAs" "Resource Manager" "Secret Manager" "Cloud Storage")
 
-    for group in "${ORDER[@]}"; do
+    for group in "${PERM_GROUP_ORDER[@]}"; do
         echo -e "\n[*] Auditing $group..."
         
         JSON_ARRAY=$(echo ${PERM_GROUPS[$group]} | jq -R -c 'split(" ")')

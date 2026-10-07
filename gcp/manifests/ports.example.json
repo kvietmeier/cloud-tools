@@ -1,0 +1,9 @@
+{
+  "ports": [
+    { "port": "22", "proto": "tcp", "label": "SSH" },
+    { "port": "80", "proto": "tcp", "label": "HTTP" },
+    { "port": "443", "proto": "tcp", "label": "HTTPS" },
+    { "port": "389", "proto": "tcp", "label": "LDAP" },
+    { "port": "636", "proto": "tcp", "label": "LDAPS" }
+  ]
+}

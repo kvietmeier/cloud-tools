@@ -6,7 +6,17 @@
 # SUMMARY:
 # Audits IAM permissions. Supports a -v flag for full verbosity
 # listing EVERY permission checked across all service groups.
+#
+# Usage:
+#   ./gcp_check_perms.sh [PROJECT_ID] [-v] [--perms PATH]
+#   GCP_PERMS_MANIFEST=./manifests/permissions.example.json ./gcp_check_perms.sh
+#
+# Manifest: JSON or YAML (see manifests/permissions.example.*)
 # ==============================================================================
+
+_GCP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/manifest.sh
+source "${_GCP_DIR}/lib/manifest.sh"
 
 # ---------------------------------------------------------
 # [1/4] Argument & Dependency Check
@@ -15,18 +25,38 @@ for cmd in gcloud jq curl; do
     if ! command -v $cmd &> /dev/null; then echo "[FAIL] Missing dependency: $cmd"; exit 1; fi
 done
 
-PROJECT_ID=$1
 VERBOSE=false
+PERMS_MANIFEST="${GCP_PERMS_MANIFEST:-}"
+POSITIONAL_ARGS=()
 
-for arg in "$@"; do
-    if [[ "$arg" == "-v" || "$arg" == "--verbose" ]]; then VERBOSE=true; fi
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -v|--verbose) VERBOSE=true; shift ;;
+        --perms|--permissions-manifest)
+            PERMS_MANIFEST="$2"; shift 2 ;;
+        --perms=*|--permissions-manifest=*)
+            PERMS_MANIFEST="${1#*=}"; shift ;;
+        -h|--help)
+            echo "Usage: $0 [PROJECT_ID] [-v] [--perms PATH]"
+            echo "  --perms PATH   JSON/YAML permissions manifest (or set GCP_PERMS_MANIFEST)"
+            exit 0 ;;
+        *) POSITIONAL_ARGS+=("$1"); shift ;;
+    esac
 done
 
+PROJECT_ID=${POSITIONAL_ARGS[0]:-}
 [[ -z "$PROJECT_ID" || "$PROJECT_ID" == "-v" ]] && read -p "Enter GCP Project ID: " PROJECT_ID
+
+if [[ -n "$PERMS_MANIFEST" ]]; then
+    load_permissions_manifest "$PERMS_MANIFEST" || exit 1
+else
+    load_default_permissions
+fi
 
 echo "============================================================"
 echo " GCP IAM Permission Auditor: $PROJECT_ID"
 [[ "$VERBOSE" == "true" ]] && echo " MODE: Verbose (Listing all permissions)"
+[[ -n "$PERMS_MANIFEST" ]] && echo " Manifest: $PERMS_MANIFEST"
 echo "============================================================"
 
 # ---------------------------------------------------------
@@ -48,24 +78,11 @@ else
 fi
 
 # ---------------------------------------------------------
-# [3/4] Permission Groups
-# ---------------------------------------------------------
-declare -A PERM_GROUPS=(
-    ["Cloud Functions"]="cloudfunctions.functions.create cloudfunctions.functions.delete cloudfunctions.functions.get cloudfunctions.functions.getIamPolicy cloudfunctions.functions.setIamPolicy cloudfunctions.operations.get"
-    ["Compute Engine"]="compute.addresses.createInternal compute.addresses.deleteInternal compute.addresses.get compute.addresses.setLabels compute.addresses.useInternal compute.disks.create compute.disks.setLabels compute.healthChecks.create compute.healthChecks.delete compute.healthChecks.get compute.healthChecks.use compute.images.get compute.images.useReadOnly compute.instanceGroupManagers.create compute.instanceGroupManagers.delete compute.instanceGroupManagers.get compute.instanceGroups.create compute.instanceGroups.delete compute.instanceGroups.get compute.instanceTemplates.create compute.instanceTemplates.delete compute.instanceTemplates.get compute.instanceTemplates.useReadOnly compute.instances.create compute.instances.get compute.instances.setLabels compute.instances.setMetadata compute.instances.setTags compute.regionOperations.get compute.subnetworks.get compute.subnetworks.use compute.resourcePolicies.create compute.resourcePolicies.delete compute.resourcePolicies.get"
-    ["IAM & SAs"]="iam.roles.create iam.roles.delete iam.roles.get iam.roles.undelete iam.serviceAccounts.actAs iam.serviceAccounts.create iam.serviceAccounts.delete iam.serviceAccounts.get"
-    ["Resource Manager"]="resourcemanager.projects.get resourcemanager.projects.getIamPolicy resourcemanager.projects.setIamPolicy"
-    ["Secret Manager"]="secretmanager.secrets.create secretmanager.secrets.delete secretmanager.secrets.get secretmanager.versions.access secretmanager.versions.add secretmanager.versions.destroy secretmanager.versions.enable secretmanager.versions.get"
-    ["Cloud Storage"]="storage.buckets.create storage.buckets.delete storage.buckets.get storage.objects.create storage.objects.delete storage.objects.get"
-)
-
-# ---------------------------------------------------------
-# [4/4] Execution & Verbose Reporting
+# [3/4] Execution & Verbose Reporting
 # ---------------------------------------------------------
 TOKEN=$(gcloud auth print-access-token 2>/dev/null)
-ORDER=("Cloud Functions" "Compute Engine" "IAM & SAs" "Resource Manager" "Secret Manager" "Cloud Storage")
 
-for group in "${ORDER[@]}"; do
+for group in "${PERM_GROUP_ORDER[@]}"; do
     echo -e "\n[*] Auditing $group..."
     
     JSON_ARRAY=$(echo ${PERM_GROUPS[$group]} | jq -R -c 'split(" ")')

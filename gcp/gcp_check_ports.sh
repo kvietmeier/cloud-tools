@@ -4,30 +4,52 @@
 # ==============================================================================
 # GCP Firewall Port Auditor
 # ==============================================================================
-# REQUIRED_PORTS entries are "port:proto:label". Edit this list for your
-# workload. Example extras (uncomment / append as needed):
-#   "4420:tcp:NVMe-oF"
-#   "2049:tcp:NFS"
-#   "445:tcp:SMB"
-#   "111:tcp:rpcbind"
-#   "20048:tcp:mountd"
-REQUIRED_PORTS=(
-    "22:tcp:SSH"
-    "80:tcp:HTTP"
-    "443:tcp:HTTPS"
-    "389:tcp:LDAP"
-    "636:tcp:LDAPS"
-    # Add more ports below, e.g. "PORT:tcp:LABEL" or "PORT:udp:LABEL"
-)
+# Usage:
+#   ./gcp_check_ports.sh [PROJECT_ID] [VPC_NAME] [TARGET_RULE] [--ports PATH]
+#   GCP_PORTS_MANIFEST=./manifests/ports.example.json ./gcp_check_ports.sh
+#
+# Manifest: JSON, YAML, or .txt (see manifests/ports.example.*)
+# ==============================================================================
 
-PROJECT_ID=$1; VPC_NAME=$2; TARGET_RULE=$3
+_GCP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/manifest.sh
+source "${_GCP_DIR}/lib/manifest.sh"
+
+PORTS_MANIFEST="${GCP_PORTS_MANIFEST:-}"
+POSITIONAL_ARGS=()
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --ports|--ports-manifest)
+            PORTS_MANIFEST="$2"; shift 2 ;;
+        --ports=*|--ports-manifest=*)
+            PORTS_MANIFEST="${1#*=}"; shift ;;
+        -h|--help)
+            echo "Usage: $0 [PROJECT_ID] [VPC_NAME] [TARGET_RULE] [--ports PATH]"
+            echo "  --ports PATH   JSON/YAML/TXT ports manifest (or set GCP_PORTS_MANIFEST)"
+            exit 0 ;;
+        *) POSITIONAL_ARGS+=("$1"); shift ;;
+    esac
+done
+
+PROJECT_ID=${POSITIONAL_ARGS[0]:-}
+VPC_NAME=${POSITIONAL_ARGS[1]:-}
+TARGET_RULE=${POSITIONAL_ARGS[2]:-}
+
 [[ -z "$PROJECT_ID" ]] && read -p "Project ID: " PROJECT_ID
 [[ -z "$VPC_NAME" ]] && read -p "VPC Name: " VPC_NAME
 [[ -z "$TARGET_RULE" ]] && read -p "Rule Name (Blank for SCAN ALL): " TARGET_RULE
 
+if [[ -n "$PORTS_MANIFEST" ]]; then
+    load_ports_manifest "$PORTS_MANIFEST" || exit 1
+else
+    load_default_ports
+fi
+
 echo "============================================================"
 echo " GCP Firewall Port Auditor: $PROJECT_ID"
 echo " VPC: $VPC_NAME | Mode: ${TARGET_RULE:-FULL VPC SCAN}"
+[[ -n "$PORTS_MANIFEST" ]] && echo " Manifest: $PORTS_MANIFEST"
 echo "============================================================"
 
 # 1. FETCH & DISCOVER
@@ -65,7 +87,7 @@ check_port() {
     fi
 }
 
-echo -e "\n[*] Required Ports (edit REQUIRED_PORTS to extend)"
+echo -e "\n[*] Required Ports"
 echo "------------------------------------------------------------"
 for p in "${REQUIRED_PORTS[@]}"; do
     [[ -z "$p" || "$p" =~ ^[[:space:]]*# ]] && continue

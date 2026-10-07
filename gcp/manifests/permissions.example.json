@@ -1,0 +1,89 @@
+{
+  "order": [
+    "Cloud Functions",
+    "Compute Engine",
+    "IAM & SAs",
+    "Resource Manager",
+    "Secret Manager",
+    "Cloud Storage"
+  ],
+  "groups": {
+    "Cloud Functions": [
+      "cloudfunctions.functions.create",
+      "cloudfunctions.functions.delete",
+      "cloudfunctions.functions.get",
+      "cloudfunctions.functions.getIamPolicy",
+      "cloudfunctions.functions.setIamPolicy",
+      "cloudfunctions.operations.get"
+    ],
+    "Compute Engine": [
+      "compute.addresses.createInternal",
+      "compute.addresses.deleteInternal",
+      "compute.addresses.get",
+      "compute.addresses.setLabels",
+      "compute.addresses.useInternal",
+      "compute.disks.create",
+      "compute.disks.setLabels",
+      "compute.healthChecks.create",
+      "compute.healthChecks.delete",
+      "compute.healthChecks.get",
+      "compute.healthChecks.use",
+      "compute.images.get",
+      "compute.images.useReadOnly",
+      "compute.instanceGroupManagers.create",
+      "compute.instanceGroupManagers.delete",
+      "compute.instanceGroupManagers.get",
+      "compute.instanceGroups.create",
+      "compute.instanceGroups.delete",
+      "compute.instanceGroups.get",
+      "compute.instanceTemplates.create",
+      "compute.instanceTemplates.delete",
+      "compute.instanceTemplates.get",
+      "compute.instanceTemplates.useReadOnly",
+      "compute.instances.create",
+      "compute.instances.get",
+      "compute.instances.setLabels",
+      "compute.instances.setMetadata",
+      "compute.instances.setTags",
+      "compute.regionOperations.get",
+      "compute.subnetworks.get",
+      "compute.subnetworks.use",
+      "compute.resourcePolicies.create",
+      "compute.resourcePolicies.delete",
+      "compute.resourcePolicies.get"
+    ],
+    "IAM & SAs": [
+      "iam.roles.create",
+      "iam.roles.delete",
+      "iam.roles.get",
+      "iam.roles.undelete",
+      "iam.serviceAccounts.actAs",
+      "iam.serviceAccounts.create",
+      "iam.serviceAccounts.delete",
+      "iam.serviceAccounts.get"
+    ],
+    "Resource Manager": [
+      "resourcemanager.projects.get",
+      "resourcemanager.projects.getIamPolicy",
+      "resourcemanager.projects.setIamPolicy"
+    ],
+    "Secret Manager": [
+      "secretmanager.secrets.create",
+      "secretmanager.secrets.delete",
+      "secretmanager.secrets.get",
+      "secretmanager.versions.access",
+      "secretmanager.versions.add",
+      "secretmanager.versions.destroy",
+      "secretmanager.versions.enable",
+      "secretmanager.versions.get"
+    ],
+    "Cloud Storage": [
+      "storage.buckets.create",
+      "storage.buckets.delete",
+      "storage.buckets.get",
+      "storage.objects.create",
+      "storage.objects.delete",
+      "storage.objects.get"
+    ]
+  }
+}

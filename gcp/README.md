@@ -19,6 +19,8 @@ Auth and shell aliases live in `system-tools`. Runnable multi-step cloud jobs li
 | `vpn/` | GCP↔Azure HA VPN create / rebuild / diagnostics |
 | `powershell/` | Windows/PowerShell equivalents for IPs, VMs, quotas, IAP |
 | `archive/` | Older one-offs (not maintained) |
+| `lib/` | Shared helpers (manifest loaders) |
+| `manifests/` | Example JSON/YAML/TXT permission and port manifests |
 
 ---
 
@@ -83,9 +85,23 @@ gcloud config get-value account
 
 ```bash
 ./gcp_check_apis.sh
-./gcp_check_perms.sh <PROJECT_ID> [-v]
-./gcp_check_ports.sh <PROJECT_ID> <VPC_NAME> [TARGET_RULE]
+./gcp_check_perms.sh <PROJECT_ID> [-v] [--perms manifests/permissions.example.json]
+./gcp_check_ports.sh <PROJECT_ID> <VPC_NAME> [TARGET_RULE] [--ports manifests/ports.example.json]
 ./gcp_check_quota.sh <PROJECT_ID>
+
+# Or via env:
+# GCP_PERMS_MANIFEST=./manifests/permissions.example.yml
+# GCP_PORTS_MANIFEST=./manifests/ports.example.txt
+```
+
+JSON manifests need only `jq`. YAML needs `yq` or PyYAML. Port lists also accept plain `.txt` (see `manifests/ports.example.*`).
+
+### Project validator (with optional manifests)
+
+```bash
+./gcp_validate_project.sh [PROJECT_ID] [VPC_NAME] [SUBNET_NAME] [TARGET_RULE] [-v] \
+  [--perms manifests/permissions.example.json] \
+  [--ports manifests/ports.example.yml]
 ```
 
 ### New VPC (lab baseline)

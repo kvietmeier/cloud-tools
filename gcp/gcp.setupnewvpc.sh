@@ -4,6 +4,7 @@
 #===========================================================
 # File: gcp.setupnewvpc.sh
 # Description: Creates a multi-region custom VPC.
+# Ports: set PORT_FILE to manifests/ports.example.txt|.json|.yml (or ports.txt).
 #              - 3 subnets in 3 regions (expandable)
 #              - Cloud Routers + NAT in each region
 #              - Private Google Access enabled on all subnets
@@ -22,6 +23,10 @@
 
 
 set -euo pipefail
+
+_GCP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/manifest.sh
+source "${_GCP_DIR}/lib/manifest.sh"
 
 #===========================================================
 # Ensure gcloud is authenticated
@@ -47,7 +52,8 @@ echo "Using GCP project: $PROJECT_ID"
 # Configurable variables
 #===========================================================
 VPC_NAME="lab-vpc"
-PORT_FILE="./ports.txt"
+# Optional: ports.txt, or manifests/ports.example.json|.yml|.txt
+PORT_FILE="${GCP_PORTS_MANIFEST:-./ports.txt}"
 
 declare -A REGIONS=(
   ["us-central1"]="10.0.0.0/20"
@@ -155,12 +161,19 @@ create_firewall_rules() {
     --source-ranges=35.191.0.0/16,130.211.0.0/22,199.36.153.4/30,199.36.153.8/30,35.235.240.0/20,35.199.192.0/19 \
     --description="Allow GCP health checks, IAP, Private APIs, Cloud DNS" || echo "Firewall rule already exists, continuing..."
 
-  # Load optional port list (one "proto:port" per line). Edit PORT_FILE or defaults below.
+  # Load optional port manifest (JSON/YAML/TXT). Falls back to built-in defaults.
   if [[ -f "${PORT_FILE}" ]]; then
     echo ">>> Loading ports from ${PORT_FILE}"
-    PORTS=$(grep -v '^#' "${PORT_FILE}" | xargs | tr ' ' ',')
+    load_ports_manifest "${PORT_FILE}"
+    PORTS=""
+    local p port proto lab
+    for p in "${REQUIRED_PORTS[@]}"; do
+      IFS=":" read -r port proto lab <<< "$p"
+      [[ -n "$PORTS" ]] && PORTS+=","
+      PORTS+="${proto}:${port}"
+    done
   else
-    echo ">>> No ${PORT_FILE} found, using default ports (edit script or add ${PORT_FILE} to extend)"
+    echo ">>> No ${PORT_FILE} found, using default ports (edit script or set PORT_FILE / GCP_PORTS_MANIFEST)"
     PORTS="tcp:22,tcp:80,tcp:443,tcp:389,tcp:636"
   fi
 

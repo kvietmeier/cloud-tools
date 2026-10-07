@@ -1,0 +1,22 @@
+# Copy to ports.yml (or .json / .txt) and pass with --ports / GCP_PORTS_MANIFEST.
+# YAML needs yq or PyYAML; JSON works with jq only.
+ports:
+  - port: "22"
+    proto: tcp
+    label: SSH
+  - port: "80"
+    proto: tcp
+    label: HTTP
+  - port: "443"
+    proto: tcp
+    label: HTTPS
+  - port: "389"
+    proto: tcp
+    label: LDAP
+  - port: "636"
+    proto: tcp
+    label: LDAPS
+  # Add more:
+  # - port: "2049"
+  #   proto: tcp
+  #   label: NFS
