@@ -1,2 +1,6 @@
 # Local / sensitive overrides — do not publish
 aws/cato-local.conf
+
+# Cursor local agent rules/settings — keep out of the public tree
+.cursor/
+
