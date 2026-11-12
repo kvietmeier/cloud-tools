@@ -49,7 +49,7 @@ Auth and shell aliases live in `system-tools`. Runnable multi-step cloud jobs li
 |--------|---------|
 | `gcp_manage_vms.sh` | Sourceable helper: start/stop/resume/list lab or gateway client VMs in parallel |
 | `gcp_create_share_bucket.sh` | Create a public GCS share bucket (drivers/ISOs) |
-| `z3sniper.sh` | Probe whether Z3 High Local SSD capacity exists in a zone for N VMs |
+| `z3sniper.sh` | Probe Z3 High Local SSD capacity; defaults to sweeping us-central1 zones |
 | `check_tpu_avail.sh` | TPU calendar-mode availability (edit params at top of script) |
 
 ### VPN (`vpn/`)
@@ -114,8 +114,10 @@ JSON manifests need only `jq`. YAML needs `yq` or PyYAML. Port lists also accept
 ### Z3 capacity probe
 
 ```bash
-./z3sniper.sh <VM_COUNT> <ZONE>
-# Example: ./z3sniper.sh 11 us-east4-a
+./z3sniper.sh <VM_COUNT> [ZONE ...]
+# Default (no ZONE): sweeps us-central1-a/b/c/f
+# Example: ./z3sniper.sh 11
+# Example: ./z3sniper.sh 11 us-east4-a us-east4-b
 ```
 
 ### Public share bucket

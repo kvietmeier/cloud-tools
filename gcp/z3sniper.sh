@@ -6,15 +6,17 @@
 # ==============================================================================
 # Script: z3sniper.sh
 # Purpose: Acts as a "stealth probe" to determine if physical Z3 High Local SSD
-#          inventory is currently available in a specific GCP zone for a 
-#          specified cluster size.
-# 
+#          inventory is currently available for a specified cluster size.
+#          Defaults to sweeping all us-central1 zones (current stuck region).
+#
 # Execution:
 #   chmod +x z3sniper.sh
-#   ./z3sniper.sh <VM_COUNT> <ZONE>
+#   ./z3sniper.sh <VM_COUNT> [ZONE ...]
 #
-# Example (Probing for an 11-node cluster in us-east4-a):
-#   ./z3sniper.sh 11 us-east4-a
+# Examples:
+#   ./z3sniper.sh 11                  # sweep us-central1-a/b/c/f
+#   ./z3sniper.sh 11 us-central1-a    # single zone
+#   ./z3sniper.sh 11 us-east4-a us-east4-b
 #
 # Requirements:
 #   - Authenticated gcloud CLI session
@@ -25,10 +27,14 @@
 
 set -euo pipefail
 
-# Input Validation
-if [ "$#" -ne 2 ]; then
+# Default: us-central1 zones (a, b, c, f)
+DEFAULT_ZONES=(us-central1-a us-central1-b us-central1-c us-central1-f)
+MACHINE_TYPE="z3-highmem-88-highlssd"
+
+if [ "$#" -lt 1 ]; then
     echo "ERROR: Missing required parameters."
-    echo "USAGE: $0 <VM_COUNT> <ZONE>"
+    echo "USAGE: $0 <VM_COUNT> [ZONE ...]"
+    echo "  With no ZONE args, sweeps: ${DEFAULT_ZONES[*]}"
     exit 1
 fi
 
@@ -38,27 +44,51 @@ if ! [[ "$1" =~ ^[0-9]+$ ]]; then
 fi
 
 VM_COUNT=$1
-ZONE=$2
-RES_NAME="z3-highlssd-probe-${VM_COUNT}n"
-MACHINE_TYPE="z3-highmem-88-highlssd"
+shift
 
-echo "Probing zone $ZONE for $VM_COUNT x $MACHINE_TYPE capacity..."
-
-# Attempt to create the reservation
-if gcloud compute reservations create $RES_NAME \
-    --zone=$ZONE \
-    --machine-type=$MACHINE_TYPE \
-    --vm-count=$VM_COUNT \
-    --require-specific-reservation \
-    --quiet > /dev/null 2>&1; then
-    
-    echo "SUCCESS: Capacity for $VM_COUNT nodes found in $ZONE. Releasing reservation..."
-    
-    # Immediately delete to stop billing and release capacity
-    gcloud compute reservations delete $RES_NAME \
-        --zone=$ZONE \
-        --quiet
+if [ "$#" -gt 0 ]; then
+    ZONES=("$@")
 else
-    echo "FAILED: Insufficient capacity for $VM_COUNT nodes in $ZONE (or quota exceeded)."
-    exit 1
+    ZONES=("${DEFAULT_ZONES[@]}")
 fi
+
+AVAILABLE_ZONES=()
+
+echo "Probing ${#ZONES[@]} zone(s) for $VM_COUNT x $MACHINE_TYPE capacity..."
+echo "Zones: ${ZONES[*]}"
+echo "--------------------------------------------------"
+
+for ZONE in "${ZONES[@]}"; do
+    # Unique name per zone so a leftover probe does not poison the whole sweep
+    RES_NAME="z3-highlssd-probe-${VM_COUNT}n-${ZONE}"
+
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Probing $ZONE..."
+
+    if gcloud compute reservations create "$RES_NAME" \
+        --zone="$ZONE" \
+        --machine-type="$MACHINE_TYPE" \
+        --vm-count="$VM_COUNT" \
+        --require-specific-reservation \
+        --quiet > /dev/null 2>&1; then
+
+        echo "  SUCCESS: Capacity for $VM_COUNT nodes in $ZONE. Releasing reservation..."
+        gcloud compute reservations delete "$RES_NAME" \
+            --zone="$ZONE" \
+            --quiet
+        AVAILABLE_ZONES+=("$ZONE")
+    else
+        echo "  FAILED: Insufficient capacity in $ZONE (or quota / name conflict)."
+    fi
+done
+
+echo "--------------------------------------------------"
+if [ "${#AVAILABLE_ZONES[@]}" -gt 0 ]; then
+    echo "Capacity currently available in:"
+    for Z in "${AVAILABLE_ZONES[@]}"; do
+        echo "  - $Z"
+    done
+    exit 0
+fi
+
+echo "No capacity found in probed zones."
+exit 1
