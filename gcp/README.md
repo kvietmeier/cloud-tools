@@ -32,7 +32,7 @@ Auth and shell aliases live in `system-tools`. Runnable multi-step cloud jobs li
 |--------|---------|
 | `gcp.list_priv_ips.sh` | Table of all reserved INTERNAL addresses in the current project |
 | `gcp.list_vm_tags_labels.sh` | List network tags and labels for every VM in the project |
-| `gcp.update_vm_labels.sh` | Merge Polaris labels onto a VM (`--solutions` / `--karlv` / `--as NAME`; optional `--longlived`) |
+| `gcp.update_vm_labels.sh` | Merge DevOps labels onto a VM (`owner`/`used_by`; optional `--longrun`) |
 | `gcp_check_ports.sh` | Audit VPC firewall ingress for required ports |
 | `gcp.setupnewvpc.sh` | Create multi-region custom VPC (subnets, Cloud NAT, PGA, baseline firewall) |
 

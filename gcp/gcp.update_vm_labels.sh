@@ -5,31 +5,32 @@
 # Script:        gcp.update_vm_labels.sh
 #
 # SYNOPSIS
-#     Update (merge) ownership labels on a Compute Engine VM.
+#     Update (merge) DevOps-canonical ownership labels on a Compute Engine VM.
 #
 # DESCRIPTION
-#     Sets Polaris-style labels via `gcloud compute instances update`:
-#         owned_by=<who>
-#         used=<who>
-#         longlived=yes   (only with --longlived / --longrun)
+#     Sets GCP labels (what DevOps calls "tags"):
+#         owner=<who>
+#         used_by=<who>
+#         longrun=true   (only with --longrun)
 #
 #     Choose who with one of:
-#         --solutions     owned_by/used = solutions
-#         --karlv         owned_by/used = karlv
-#         --as NAME       owned_by/used = NAME  (custom)
+#         --solutions     owner/used_by = solutions
+#         --karlv         owner/used_by = karlv
+#         --as NAME       owner/used_by = NAME  (custom)
 #
-#     longlived is presence-based (not yes/no):
-#         --longlived / --longrun   set longlived=yes (keep / do not harvest)
-#         omit the flag             remove longlived (and legacy longrun) so
-#                                   absence means harvestable
+#     longrun is presence-based (not a boolean toggle):
+#         --longrun   set longrun=true (keep / do not harvest)
+#         omit        remove longrun (and legacy longlived) so absence = harvestable
+#
+#     Also removes non-canonical keys if present: longlived, owned_by, owned, used
 #
 # NOTES
-#     These are GCP *labels* (key=value), not network tags.
+#     These are GCP *labels* (key=value), not network tags or Resource Manager Tags.
 #     Uses the currently set gcloud project; pass --project for a different one.
 #     Requires: Google Cloud SDK (gcloud)
 #
 # EXAMPLE
-#     ./gcp.update_vm_labels.sh lab-client01 --karlv --longlived
+#     ./gcp.update_vm_labels.sh lab-client01 --karlv --longrun
 #     ./gcp.update_vm_labels.sh lab-client01 --solutions
 #     ./gcp.update_vm_labels.sh lab-client01 --as sebastien --longrun
 ###############################################################################
@@ -37,12 +38,12 @@
 set -euo pipefail
 
 usage() {
-  echo "Usage: $0 VM_NAME (--solutions | --karlv | --as NAME) [--longlived|--longrun] [--zone ZONE] [--project PROJECT_ID]"
+  echo "Usage: $0 VM_NAME (--solutions | --karlv | --as NAME) [--longrun] [--zone ZONE] [--project PROJECT_ID]"
   echo ""
-  echo "  --solutions          owned_by=solutions, used=solutions"
-  echo "  --karlv              owned_by=karlv, used=karlv"
-  echo "  --as NAME            owned_by=NAME, used=NAME"
-  echo "  --longlived|--longrun  set longlived=yes (keep VM); omit = remove it (harvestable)"
+  echo "  --solutions   owner=solutions, used_by=solutions"
+  echo "  --karlv       owner=karlv, used_by=karlv"
+  echo "  --as NAME     owner=NAME, used_by=NAME"
+  echo "  --longrun     set longrun=true (keep VM); omit = remove it (harvestable)"
   exit 1
 }
 
@@ -56,7 +57,7 @@ shift
 ZONE=""
 PROJECT_ID=""
 WHO=""
-LONGLIVED=0
+LONGRUN=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -73,8 +74,8 @@ while [[ $# -gt 0 ]]; do
       WHO="$2"
       shift 2
       ;;
-    --longlived|--longrun)
-      LONGLIVED=1
+    --longrun)
+      LONGRUN=1
       shift
       ;;
     --zone|-z)
@@ -105,16 +106,15 @@ if [[ ! "$WHO" =~ ^[a-z0-9_-]+$ ]]; then
   exit 1
 fi
 
-UPDATE_LABELS="owned_by=${WHO},used=${WHO}"
-REMOVE_LABELS=()
+UPDATE_LABELS="owner=${WHO},used_by=${WHO}"
+# Always strip non-canonical / legacy keys from earlier naming
+REMOVE_LABELS=(longlived owned_by owned used)
 
-if [[ "$LONGLIVED" -eq 1 ]]; then
-  UPDATE_LABELS="${UPDATE_LABELS},longlived=yes"
-  # Drop legacy key if present so only longlived remains
-  REMOVE_LABELS+=(longrun)
+if [[ "$LONGRUN" -eq 1 ]]; then
+  UPDATE_LABELS="${UPDATE_LABELS},longrun=true"
 else
-  # Absence of longlived = harvestable; also clear legacy longrun
-  REMOVE_LABELS+=(longlived longrun)
+  # Absence of longrun = harvestable
+  REMOVE_LABELS+=(longrun)
 fi
 
 if [[ -z "$PROJECT_ID" ]]; then
@@ -138,31 +138,25 @@ if [[ -z "$ZONE" ]]; then
   fi
 fi
 
-GCLOUD_ARGS=(
-  compute instances update "$VM_NAME"
-  --project "$PROJECT_ID"
-  --zone "$ZONE"
-  --update-labels="$UPDATE_LABELS"
-)
+REMOVE_CSV=$(IFS=,; echo "${REMOVE_LABELS[*]}")
 
-if [[ ${#REMOVE_LABELS[@]} -gt 0 ]]; then
-  # Comma-separated list for --remove-labels
-  REMOVE_CSV=$(IFS=,; echo "${REMOVE_LABELS[*]}")
-  GCLOUD_ARGS+=(--remove-labels="$REMOVE_CSV")
-fi
-
-echo "Project:    $PROJECT_ID"
-echo "VM:         $VM_NAME"
-echo "Zone:       $ZONE"
-echo "Update:     $UPDATE_LABELS"
-if [[ "$LONGLIVED" -eq 1 ]]; then
-  echo "Longlived:  yes (keep)"
+echo "Project:  $PROJECT_ID"
+echo "VM:       $VM_NAME"
+echo "Zone:     $ZONE"
+echo "Update:   $UPDATE_LABELS"
+if [[ "$LONGRUN" -eq 1 ]]; then
+  echo "Longrun:  true (keep)"
 else
-  echo "Longlived:  absent (harvestable); removing: ${REMOVE_LABELS[*]}"
+  echo "Longrun:  absent (harvestable)"
 fi
+echo "Remove:   $REMOVE_CSV"
 echo ""
 
-gcloud "${GCLOUD_ARGS[@]}"
+gcloud compute instances update "$VM_NAME" \
+  --project "$PROJECT_ID" \
+  --zone "$ZONE" \
+  --update-labels="$UPDATE_LABELS" \
+  --remove-labels="$REMOVE_CSV"
 
 echo ""
 echo "Updated. Current labels:"

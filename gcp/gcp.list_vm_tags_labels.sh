@@ -60,49 +60,47 @@ if [[ "$COUNT" -eq 0 ]]; then
 fi
 
 # One block per VM (readable when labels/tags are long)
+# Note: network tags (tags.items) != console "Tags" (org resource tags).
 echo "$json" | jq -r '
   .[] |
+  (.name) as $name |
+  (if (.zone | type) == "string" then (.zone | split("/") | last) else "unknown" end) as $zone |
+  (.status // "UNKNOWN") as $status |
   (
-    .name
-  ) as $name |
-  (
-    if (.zone | type == "string") then (.zone | split("/") | last) else "unknown" end
-  ) as $zone |
-  (
-    .status // "UNKNOWN"
-  ) as $status |
-  (
-    if (.tags.items | type == "array" and length > 0)
+    if ((.tags.items | type) == "array") and ((.tags.items | length) > 0)
     then (.tags.items | join(", "))
     else "(none)"
     end
   ) as $tags |
   (
-    if (.labels | type == "object" and (.labels | length) > 0)
+    if ((.labels | type) == "object") and ((.labels | length) > 0)
     then (.labels | to_entries | map("\(.key)=\(.value)") | join(", "))
     else "(none)"
     end
   ) as $labels |
-  "VM:      \($name)\nZone:    \($zone)\nStatus:  \($status)\nTags:    \($tags)\nLabels:  \($labels)\n----------------------------------------------------------"
+  "VM:            \($name)\nZone:          \($zone)\nStatus:        \($status)\nNetwork tags:  \($tags)\nLabels:        \($labels)\n----------------------------------------------------------"
 '
 
-# Compact summary table
+# Compact summary table — labels first (Polaris / DevOps care about these)
 echo ""
 echo "-------------------- Compact table -----------------------"
-printf "%-32s %-24s %-12s %-40s %s\n" "NAME" "ZONE" "STATUS" "TAGS" "LABELS"
+printf "%-32s %-16s %-12s %-55s %s\n" "NAME" "ZONE" "STATUS" "LABELS" "NETWORK_TAGS"
 echo "$json" | jq -r '
   .[] |
   [
     .name,
-    (if (.zone | type == "string") then (.zone | split("/") | last) else "unknown" end),
+    (if (.zone | type) == "string" then (.zone | split("/") | last) else "unknown" end),
     (.status // "UNKNOWN"),
-    (if (.tags.items | type == "array" and length > 0) then (.tags.items | join(",")) else "-" end),
-    (if (.labels | type == "object" and (.labels | length) > 0)
+    (if ((.labels | type) == "object") and ((.labels | length) > 0)
      then (.labels | to_entries | map("\(.key)=\(.value)") | join(","))
+     else "-"
+     end),
+    (if ((.tags.items | type) == "array") and ((.tags.items | length) > 0)
+     then (.tags.items | join(","))
      else "-"
      end)
   ] | @tsv
-' | while IFS=$'\t' read -r name zone status tags labels; do
-  printf "%-32s %-24s %-12s %-40s %s\n" "$name" "$zone" "$status" "$tags" "$labels"
+' | while IFS=$'\t' read -r name zone status labels tags; do
+  printf "%-32s %-16s %-12s %-55s %s\n" "$name" "$zone" "$status" "$labels" "$tags"
 done
 echo ""
